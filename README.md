@@ -1,58 +1,44 @@
 # Conjure AI Browser (WPF + Chromium/CEF)
 
-Conjure AI Browser is a Windows desktop browser being built in stages. The current drop is a first runnable version with a Chromium engine (CEF via CefSharp), basic navigation, bookmarks, and a Gemini-backed AI panel.
+Conjure AI Browser is a Windows desktop browser built on WPF with an embedded Chromium engine (CefSharp) and a built-in Gemini assistant.
 
 ## Project Structure
-- `ConjureBrowser.sln` — solution entry point.
-- `assets/` — images and icons (currently empty).
-- `docs/` — documentation (currently empty).
-- `src/ConjureBrowser.App/` — WPF UI project. Hosts the CefSharp browser control, toolbar, bookmarks menu, and AI panel.
-- `src/ConjureBrowser.Core/` — core logic: bookmarks, URL helpers, persistence.
-- `src/ConjureBrowser.AI/` — AI abstractions + Gemini client.
-- `tests/` — reserved for future tests.
+- `ConjureBrowser.sln` – solution entry point.
+- `src/ConjureBrowser.App/` – WPF UI (tabs, toolbar, AI panel).
+- `src/ConjureBrowser.Core/` – bookmarks, URL helpers, persistence.
+- `src/ConjureBrowser.AI/` – AI abstractions + Gemini client.
+- `assets/`, `docs/`, `tests/` – assets, documentation, and future tests.
 
 ## Tech Stack
 - UI: WPF (.NET 8, `net8.0-windows`)
-- Engine: Chromium Embedded Framework via `CefSharp.Wpf.NETCore`
-- Language: C#
-- Runtime target: `win-x64` (CefSharp pulls native Chromium binaries for x64)
-- AI: Google Gemini (UI options: `gemini-2.5-flash`, `gemini-3.0-pro`; mapped to API models `gemini-2.5-flash` / `gemini-3.0-pro-preview`)
+- Engine: CefSharp (`CefSharp.Wpf.NETCore`) for embedded Chromium
+- Runtime: `win-x64`
+- AI: Google Gemini (UI options: `gemini-2.5-flash`, `gemini-3.0-pro`, mapped to API models `gemini-2.5-flash` / `gemini-3.0-pro-preview`)
 
-## Prerequisites
-- Windows 10/11
-- .NET SDK 8+
-- Visual Studio with **.NET desktop development** workload
-- NuGet restore (downloads CefSharp + bundled Chromium)
-- If native VC++ runtime is missing at run-time, install the **Microsoft Visual C++ Redistributable 2015–2022**.
+## Features
+- Navigation: address bar (Enter to go/search), Back/Forward/Reload/Home.
+- Bookmarks: toggle ★/☆, menu, persisted to `%LocalAppData%\ConjureBrowser\bookmarks.json`.
+- Tabs: multiple Chromium tabs with a “＋” new-tab button and tab headers at the top.
+- AI panel:
+  - Model selector + API key box (prefills from `GEMINI_API_KEY` if set).
+  - Chat-style UI: scrolling conversation log; compact, scrollable input box (multi-line, fixed height) with send button.
+  - Uses page text as context for responses.
 
-## What Works in this Version
-- Address bar with Enter-to-navigate or search.
-- Back / Forward / Reload / Home.
-- Bookmark toggle (★/☆), bookmarks menu, persistence to `%LocalAppData%\ConjureBrowser\bookmarks.json`.
-- AI panel (Gemini):
-  - Model selector: `gemini-2.5-flash` or `gemini-3.0-pro`.
-  - API key entry (auto-fills from `GEMINI_API_KEY` env var if set; you can also paste directly).
-  - **Summarize page**: sends full page text (truncated to ~20k chars) to Gemini for a concise summary.
-  - **Ask**: sends question + page text to Gemini for an answer.
-
-## Running the App
-From the repository root:
+## Running
+From repo root:
 ```powershell
 dotnet restore
 dotnet build
 dotnet run --project .\src\ConjureBrowser.App
 ```
+Or open `ConjureBrowser.sln` in Visual Studio, set `ConjureBrowser.App` as Startup Project, and F5. If CefSharp complains about natives, set platform to `x64` (Build → Configuration Manager).
 
-Or open `ConjureBrowser.sln` in Visual Studio, set `ConjureBrowser.App` as the startup project, and press F5.
+## Gemini Setup
+- Set `GEMINI_API_KEY` environment variable (recommended) or paste your key into the AI panel.
+- Pick a model (`gemini-2.5-flash` or `gemini-3.0-pro`).
+- Type in the chat box and hit send (➤). Conversation history stays in the panel; input box is scrollable when long.
 
-**Tip:** If CefSharp complains about missing native binaries, set the solution platform to `x64` in Build → Configuration Manager.
-
-### Gemini setup
-- Set an environment variable `GEMINI_API_KEY` (recommended), or paste your key into the AI panel field.
-- Pick the model in the AI panel (`gemini-2.5-flash` or `gemini-3.0-pro`).
-- Click “Summarize page” or “Ask” to get a response in the AI panel.
-
-## Next Steps (suggested)
-- Add a tab system (tab strip + per-tab Chromium instances).
-- Stream Gemini responses and add error surfacing in the UI.
-- Add history, downloads UI, and settings.
+## Next Steps
+- Add tab close/reorder and session persistence.
+- Stream Gemini responses with better error surfacing.
+- History/downloads UI and settings.

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -21,6 +22,10 @@ public partial class MainWindow : Window
     private readonly HttpClient _httpClient = new();
     private readonly GeminiAiAssistant _ai;
 
+    private BrowserTab? _activeTab;
+
+    private readonly List<(string Role, string Text)> _conversation = new();
+
     private const string HomeUrl = "https://www.google.com";
 
     public MainWindow()
@@ -39,20 +44,27 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(envKey))
             ApiKeyBox.Password = envKey.Trim();
 
-        Browser.TitleChanged += Browser_TitleChanged;
-        Browser.AddressChanged += Browser_AddressChanged;
-        Browser.LoadingStateChanged += Browser_LoadingStateChanged;
-
-        Navigate(HomeUrl);
+        Tabs.Items.Clear();
+        AddNewTab(HomeUrl);
         UpdateAiPanelVisibility();
+    }
+
+    private void AttachBrowserEvents(BrowserTab tab)
+    {
+        tab.Browser.TitleChanged += Browser_TitleChanged;
+        tab.Browser.AddressChanged += Browser_AddressChanged;
+        tab.Browser.LoadingStateChanged += Browser_LoadingStateChanged;
     }
 
     private void Browser_TitleChanged(object? sender, DependencyPropertyChangedEventArgs e)
     {
         Dispatcher.Invoke(() =>
         {
-            var title = Browser.Title;
-            Title = string.IsNullOrWhiteSpace(title) ? "Conjure Browser" : $"{title} - Conjure Browser";
+            if (_activeTab is null) return;
+            _activeTab.Header.Text = _activeTab.Browser.Title ?? "New Tab";
+            Title = string.IsNullOrWhiteSpace(_activeTab.Browser.Title)
+                ? "Conjure Browser"
+                : $"{_activeTab.Browser.Title} - Conjure Browser";
         });
     }
 
@@ -60,7 +72,8 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(async () =>
         {
-            AddressBar.Text = Browser.Address ?? string.Empty;
+            if (_activeTab is null) return;
+            AddressBar.Text = _activeTab.Browser.Address ?? string.Empty;
             await UpdateBookmarkUiAsync();
         });
     }
@@ -78,6 +91,8 @@ public partial class MainWindow : Window
 
     private void Navigate(string rawInput)
     {
+        if (_activeTab is null) return;
+
         var normalized = UrlHelpers.NormalizeUrl(rawInput);
 
         // If the input is not a URL, treat it as a search query.
@@ -88,12 +103,12 @@ public partial class MainWindow : Window
             normalized = $"https://www.google.com/search?q={q}";
         }
 
-        Browser.Address = normalized;
+        _activeTab.Browser.Address = normalized;
     }
 
     private async Task UpdateBookmarkUiAsync()
     {
-        var url = Browser.Address;
+        var url = _activeTab?.Browser.Address;
         if (string.IsNullOrWhiteSpace(url)) return;
 
         var isBookmarked = _bookmarks.IsBookmarked(url);
@@ -107,17 +122,19 @@ public partial class MainWindow : Window
 
     private void Back_Click(object sender, RoutedEventArgs e)
     {
-        if (Browser.CanGoBack) Browser.Back();
+        var browser = _activeTab?.Browser;
+        if (browser?.CanGoBack == true) browser.Back();
     }
 
     private void Forward_Click(object sender, RoutedEventArgs e)
     {
-        if (Browser.CanGoForward) Browser.Forward();
+        var browser = _activeTab?.Browser;
+        if (browser?.CanGoForward == true) browser.Forward();
     }
 
     private void Reload_Click(object sender, RoutedEventArgs e)
     {
-        Browser.Reload();
+        _activeTab?.Browser.Reload();
     }
 
     private void Home_Click(object sender, RoutedEventArgs e)
@@ -141,10 +158,10 @@ public partial class MainWindow : Window
 
     private async void BookmarkButton_Click(object sender, RoutedEventArgs e)
     {
-        var url = Browser.Address;
+        var url = _activeTab?.Browser.Address;
         if (string.IsNullOrWhiteSpace(url)) return;
 
-        var title = Browser.Title;
+        var title = _activeTab?.Browser.Title;
         var nowBookmarked = await _bookmarks.ToggleAsync(url, title);
 
         BookmarkButton.IsChecked = nowBookmarked;
@@ -207,57 +224,44 @@ public partial class MainWindow : Window
         AiColumn.Width = show ? new GridLength(360) : new GridLength(0);
     }
 
-    private void AiClear_Click(object sender, RoutedEventArgs e)
-    {
-        AiOutput.Text = string.Empty;
-        AiQuestion.Text = string.Empty;
-    }
-
-    private async void Summarize_Click(object sender, RoutedEventArgs e)
-    {
-        ApplyAiSettingsFromUi();
-        AiOutput.Text = "Reading page text...";
-
-        var pageText = await GetPageInnerTextAsync();
-        AiOutput.Text = "Calling Gemini...";
-
-        var result = await _ai.SummarizeAsync(pageText);
-        AiOutput.Text = result;
-    }
-
     private void AiQuestion_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
+        if (e.Key == Key.Enter && !Keyboard.IsKeyDown(Key.LeftShift) && !Keyboard.IsKeyDown(Key.RightShift))
         {
             AiAsk_Click(sender, e);
             e.Handled = true;
         }
     }
 
-    private async void AiAsk_Click(object sender, RoutedEventArgs e)
+    private async void AiAsk_Click(object? sender, RoutedEventArgs e)
     {
         ApplyAiSettingsFromUi();
 
-        var question = AiQuestion.Text?.Trim() ?? string.Empty;
+        var question = AiInput.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(question))
         {
-            AiOutput.Text = "Type a question, then press Ask.";
+            AppendMessage("system", "Type something, then press send.");
             return;
         }
 
-        AiOutput.Text = "Reading page text...";
-        var pageText = await GetPageInnerTextAsync();
+        AppendMessage("user", question);
+        AiInput.Clear();
 
-        AiOutput.Text = "Calling Gemini...";
+        var pageText = await GetPageInnerTextAsync();
+        AppendMessage("assistant", "Thinking...");
+
         var answer = await _ai.AnswerAsync(pageText, question);
-        AiOutput.Text = answer;
+
+        ReplaceLastAssistantMessage(answer);
+        RenderConversation();
     }
 
     private async Task<string> GetPageInnerTextAsync()
     {
-        if (!Browser.IsBrowserInitialized) return string.Empty;
+        var browser = _activeTab?.Browser;
+        if (browser is null || !browser.IsBrowserInitialized) return string.Empty;
 
-        var response = await Browser.EvaluateScriptAsync("document.body ? document.body.innerText : '';");
+        var response = await browser.EvaluateScriptAsync("document.body ? document.body.innerText : '';");
         if (!response.Success || response.Result is null) return string.Empty;
 
         var text = response.Result.ToString() ?? string.Empty;
@@ -286,4 +290,92 @@ public partial class MainWindow : Window
 
         return "gemini-2.5-flash";
     }
+
+    // ---------- Tabs ----------
+
+    private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (Tabs.SelectedItem is TabItem tabItem && tabItem.Tag is BrowserTab tab)
+        {
+            _activeTab = tab;
+            AddressBar.Text = tab.Browser.Address ?? string.Empty;
+            UpdateBookmarkUiAsync().ConfigureAwait(false);
+        }
+    }
+
+    private void NewTab_Click(object sender, RoutedEventArgs e)
+    {
+        AddNewTab(HomeUrl);
+    }
+
+    private void AddNewTab(string? initialUrl = null)
+    {
+        var browser = new ChromiumWebBrowser
+        {
+            Address = initialUrl ?? HomeUrl
+        };
+
+        var header = new TextBlock
+        {
+            Text = "New Tab",
+            Margin = new Thickness(6, 0, 6, 0)
+        };
+
+        var tabItem = new TabItem
+        {
+            Header = header,
+            Content = browser
+        };
+
+        var tab = new BrowserTab
+        {
+            Browser = browser,
+            Header = header,
+            TabItem = tabItem
+        };
+
+        tabItem.Tag = tab;
+        AttachBrowserEvents(tab);
+
+        Tabs.Items.Add(tabItem);
+        Tabs.SelectedItem = tabItem;
+        _activeTab = tab;
+    }
+
+    // ---------- Conversation helpers ----------
+
+    private void AppendMessage(string role, string text)
+    {
+        _conversation.Add((role, text));
+        RenderConversation();
+    }
+
+    private void ReplaceLastAssistantMessage(string text)
+    {
+        for (var i = _conversation.Count - 1; i >= 0; i--)
+        {
+            if (_conversation[i].Role == "assistant")
+            {
+                _conversation[i] = ("assistant", text);
+                RenderConversation();
+                return;
+            }
+        }
+
+        // If no assistant message found, append instead.
+        AppendMessage("assistant", text);
+    }
+
+    private void RenderConversation()
+    {
+        var lines = _conversation.Select(m => $"{m.Role}: {m.Text}");
+        AiConversation.Text = string.Join("\n\n", lines);
+    }
+}
+
+internal sealed class BrowserTab
+{
+    public ChromiumWebBrowser Browser { get; init; } = null!;
+    public TextBlock Header { get; init; } = null!;
+    public TabItem TabItem { get; init; } = null!;
 }

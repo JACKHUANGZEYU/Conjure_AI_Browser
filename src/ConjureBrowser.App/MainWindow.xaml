@@ -69,8 +69,22 @@
                 <ColumnDefinition x:Name="AiColumn" Width="360" />
             </Grid.ColumnDefinitions>
 
-            <cef:ChromiumWebBrowser x:Name="Browser" Grid.Column="0" />
+            <!-- Browser tabs -->
+            <DockPanel Grid.Column="0">
+                <Button x:Name="NewTabButton"
+                        DockPanel.Dock="Right"
+                        Width="32"
+                        Height="24"
+                        Margin="4"
+                        Content="＋"
+                        Click="NewTab_Click"
+                        ToolTip="New tab" />
+                <TabControl x:Name="Tabs"
+                            SelectionChanged="Tabs_SelectionChanged">
+                </TabControl>
+            </DockPanel>
 
+            <!-- AI panel -->
             <Border Grid.Column="1"
                     BorderThickness="1,0,0,0"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
@@ -78,18 +92,20 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Margin="10" >
+                    <!-- Header / controls -->
+                    <StackPanel Grid.Row="0" Margin="10">
                         <TextBlock Text="AI Assistant" FontWeight="SemiBold" FontSize="14" />
 
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center" >
                             <StackPanel Width="160" Margin="0,0,8,0">
                                 <TextBlock Text="Model" />
-                        <ComboBox Name="ModelSelector" SelectedIndex="0">
-                                <ComboBoxItem Content="gemini-2.5-flash" Tag="gemini-2.5-flash" />
-                                <ComboBoxItem Content="gemini-3.0-pro" Tag="gemini-3.0-pro-preview" />
-                            </ComboBox>
+                                <ComboBox Name="ModelSelector" SelectedIndex="0">
+                                    <ComboBoxItem Content="gemini-2.5-flash" Tag="gemini-2.5-flash" />
+                                    <ComboBoxItem Content="gemini-3.0-pro" Tag="gemini-3.0-pro-preview" />
+                                </ComboBox>
                             </StackPanel>
 
                             <StackPanel Width="200">
@@ -97,28 +113,35 @@
                                 <PasswordBox Name="ApiKeyBox" />
                             </StackPanel>
                         </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Content="Summarize page" Margin="0,0,8,0" Click="Summarize_Click" />
-                            <Button Content="Clear" Click="AiClear_Click" />
-                        </StackPanel>
-
-                        <DockPanel Margin="0,8,0,0">
-                            <TextBox Name="AiQuestion"
-                                     Height="28"
-                                     VerticalContentAlignment="Center"
-                                     KeyDown="AiQuestion_KeyDown" />
-                            <Button Content="Ask" Width="64" Margin="8,0,0,0" Click="AiAsk_Click" />
-                        </DockPanel>
                     </StackPanel>
 
-                    <TextBox Grid.Row="1"
-                             Name="AiOutput"
-                             Margin="10"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             VerticalScrollBarVisibility="Auto"
-                             IsReadOnly="True" />
+                    <!-- Conversation log -->
+                    <ScrollViewer Grid.Row="1"
+                                  Margin="10,0,10,6"
+                                  VerticalScrollBarVisibility="Auto">
+                        <TextBlock Name="AiConversation"
+                                   TextWrapping="Wrap"
+                                   FontFamily="Consolas"
+                                   FontSize="12" />
+                    </ScrollViewer>
+
+                    <!-- Input area -->
+                    <DockPanel Grid.Row="2" Margin="10" LastChildFill="True">
+                        <Button Name="AiSendButton"
+                                Width="36"
+                                Height="36"
+                                DockPanel.Dock="Right"
+                                Content="➤"
+                                Click="AiAsk_Click"
+                                ToolTip="Send" />
+                        <TextBox Name="AiInput"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 Height="72"
+                                 VerticalScrollBarVisibility="Auto"
+                                 KeyDown="AiQuestion_KeyDown"
+                                 Margin="0,0,8,0" />
+                    </DockPanel>
                 </Grid>
             </Border>
         </Grid>

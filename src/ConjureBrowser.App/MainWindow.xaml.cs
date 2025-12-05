@@ -1,13 +1,14 @@
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using CefSharp;
 using CefSharp.Wpf;
-using ConjureBrowser.AI.Abstractions;
 using ConjureBrowser.AI.Impl;
 using ConjureBrowser.Core.Services;
 using ConjureBrowser.Core.Utils;
@@ -17,19 +18,26 @@ namespace ConjureBrowser.App;
 public partial class MainWindow : Window
 {
     private readonly BookmarkStore _bookmarks = new();
-    private readonly IAiAssistant _ai = new SimpleAiAssistant();
+    private readonly HttpClient _httpClient = new();
+    private readonly GeminiAiAssistant _ai;
 
     private const string HomeUrl = "https://www.google.com";
 
     public MainWindow()
     {
+        _ai = new GeminiAiAssistant(_httpClient, string.Empty, "gemini-2.5-flash");
         InitializeComponent();
         Loaded += MainWindow_Loaded;
     }
 
-    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    private async void MainWindow_Loaded(object? sender, RoutedEventArgs e)
     {
         await _bookmarks.LoadAsync();
+
+        // Pre-fill API key from environment variable if present.
+        var envKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+        if (!string.IsNullOrWhiteSpace(envKey))
+            ApiKeyBox.Password = envKey.Trim();
 
         Browser.TitleChanged += Browser_TitleChanged;
         Browser.AddressChanged += Browser_AddressChanged;
@@ -207,10 +215,14 @@ public partial class MainWindow : Window
 
     private async void Summarize_Click(object sender, RoutedEventArgs e)
     {
+        ApplyAiSettingsFromUi();
         AiOutput.Text = "Reading page text...";
 
         var pageText = await GetPageInnerTextAsync();
-        AiOutput.Text = await _ai.SummarizeAsync(pageText);
+        AiOutput.Text = "Calling Gemini...";
+
+        var result = await _ai.SummarizeAsync(pageText);
+        AiOutput.Text = result;
     }
 
     private void AiQuestion_KeyDown(object sender, KeyEventArgs e)
@@ -224,6 +236,8 @@ public partial class MainWindow : Window
 
     private async void AiAsk_Click(object sender, RoutedEventArgs e)
     {
+        ApplyAiSettingsFromUi();
+
         var question = AiQuestion.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(question))
         {
@@ -234,8 +248,9 @@ public partial class MainWindow : Window
         AiOutput.Text = "Reading page text...";
         var pageText = await GetPageInnerTextAsync();
 
-        AiOutput.Text = "Thinking...";
-        AiOutput.Text = await _ai.AnswerAsync(pageText, question);
+        AiOutput.Text = "Calling Gemini...";
+        var answer = await _ai.AnswerAsync(pageText, question);
+        AiOutput.Text = answer;
     }
 
     private async Task<string> GetPageInnerTextAsync()
@@ -246,9 +261,29 @@ public partial class MainWindow : Window
         if (!response.Success || response.Result is null) return string.Empty;
 
         var text = response.Result.ToString() ?? string.Empty;
-        if (text.Length > 12000)
-            text = text[..12000] + "\n...(truncated)...";
+        if (text.Length > 20000)
+            text = text[..20000] + "\n...(truncated)...";
 
         return text;
+    }
+
+    private void ApplyAiSettingsFromUi()
+    {
+        _ai.ApiKey = ApiKeyBox.Password?.Trim() ?? string.Empty;
+        _ai.Model = GetSelectedModel();
+    }
+
+    private string GetSelectedModel()
+    {
+        if (ModelSelector.SelectedItem is ComboBoxItem item)
+        {
+            // Prefer Tag (actual API model); fall back to Content label.
+            if (item.Tag is string tag && !string.IsNullOrWhiteSpace(tag))
+                return tag.Trim();
+            if (item.Content is string content && !string.IsNullOrWhiteSpace(content))
+                return content.Trim();
+        }
+
+        return "gemini-2.5-flash";
     }
 }

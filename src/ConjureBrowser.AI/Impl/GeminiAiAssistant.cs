@@ -23,7 +23,7 @@ public sealed class GeminiAiAssistant : IAiAssistant
         Model = model;
     }
 
-    public async Task<string> SummarizeAsync(string pageText, CancellationToken ct = default)
+    public async Task<string> SummarizeAsync(string pageText, byte[]? screenshot = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ApiKey))
             return "Gemini API key is missing. Enter it in the AI panel.";
@@ -34,12 +34,13 @@ public sealed class GeminiAiAssistant : IAiAssistant
         var prompt = """
                      Summarize the page clearly and concisely for a general audience.
                      Keep it under 6 bullet points.
+                     If there are images or visual elements, describe them as well.
                      """;
 
-        return await GenerateContentAsync(prompt, pageText, ct).ConfigureAwait(false);
+        return await GenerateContentAsync(prompt, pageText, screenshot, ct).ConfigureAwait(false);
     }
 
-    public async Task<string> AnswerAsync(string pageText, string question, IReadOnlyList<(string Role, string Text)> conversation, CancellationToken ct = default)
+    public async Task<string> AnswerAsync(string pageText, string question, IReadOnlyList<(string Role, string Text)> conversation, byte[]? screenshot = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ApiKey))
             return "Gemini API key is missing. Enter it in the AI panel.";
@@ -55,8 +56,8 @@ public sealed class GeminiAiAssistant : IAiAssistant
         var historyText = string.Join("\n", history);
 
         var prompt = $"""
-                      You are an assistant. Respect the conversation so far and use the current page text as your main source.
-                      If the answer is not in the page text, say you are unsure.
+                      You are an assistant. Respect the conversation so far and use the current page text and any visual content as your main source.
+                      If the answer is not in the page text or visuals, say you are unsure.
                       
                       Conversation so far:
                       {historyText}
@@ -65,10 +66,10 @@ public sealed class GeminiAiAssistant : IAiAssistant
                       {question}
                       """;
 
-        return await GenerateContentAsync(prompt, pageText, ct).ConfigureAwait(false);
+        return await GenerateContentAsync(prompt, pageText, screenshot, ct).ConfigureAwait(false);
     }
 
-    private async Task<string> GenerateContentAsync(string prompt, string pageText, CancellationToken ct)
+    private async Task<string> GenerateContentAsync(string prompt, string pageText, byte[]? screenshot, CancellationToken ct)
     {
         var apiModel = ResolveApiModel(Model);
         const string apiVersion = "v1beta"; // v1beta supports the preview 3.0 model
@@ -78,16 +79,34 @@ public sealed class GeminiAiAssistant : IAiAssistant
         var text = pageText.Length > 20000 ? pageText[..20000] + "\n...(truncated)..." : pageText;
 
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        
+        // Build parts list - text prompt + optional image
+        var parts = new List<object>
+        {
+            new { text = $"{prompt}\n\nPage text:\n{text}" }
+        };
+
+        // Add screenshot if provided
+        if (screenshot != null && screenshot.Length > 0)
+        {
+            var base64Image = Convert.ToBase64String(screenshot);
+            parts.Add(new
+            {
+                inlineData = new
+                {
+                    mimeType = "image/png",
+                    data = base64Image
+                }
+            });
+        }
+
         var body = new
         {
             contents = new[]
             {
                 new
                 {
-                    parts = new[]
-                    {
-                        new { text = $"{prompt}\n\nPage text:\n{text}" }
-                    }
+                    parts = parts.ToArray()
                 }
             }
         };
@@ -120,10 +139,10 @@ public sealed class GeminiAiAssistant : IAiAssistant
         {
             var candidate = candidates[0];
             if (candidate.TryGetProperty("content", out var content) &&
-                content.TryGetProperty("parts", out var parts) &&
-                parts.ValueKind == JsonValueKind.Array &&
-                parts.GetArrayLength() > 0 &&
-                parts[0].TryGetProperty("text", out var textProp))
+                content.TryGetProperty("parts", out var contentParts) &&
+                contentParts.ValueKind == JsonValueKind.Array &&
+                contentParts.GetArrayLength() > 0 &&
+                contentParts[0].TryGetProperty("text", out var textProp))
             {
                 return textProp.GetString() ?? "(No text returned)";
             }

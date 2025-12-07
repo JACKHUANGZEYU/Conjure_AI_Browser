@@ -1,0 +1,65 @@
+<Window x:Class="ConjureBrowser.App.Dialogs.EditBookmarkWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Edit bookmark"
+        Height="220"
+        Width="400"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Title input -->
+        <TextBlock Grid.Row="0" Text="Title:" Margin="0,0,0,4" />
+        <TextBox Grid.Row="1"
+                 Name="TitleTextBox"
+                 Margin="0,0,0,12"
+                 VerticalContentAlignment="Center" />
+
+        <!-- URL input -->
+        <TextBlock Grid.Row="2" Text="URL:" Margin="0,0,0,4" />
+        <TextBox Grid.Row="3"
+                 Name="UrlTextBox"
+                 Margin="0,0,0,4"
+                 VerticalContentAlignment="Center" />
+
+        <!-- Error message -->
+        <TextBlock Grid.Row="4"
+                   Name="ErrorText"
+                   Margin="0,0,0,12"
+                   Foreground="Red"
+                   TextWrapping="Wrap"
+                   Visibility="Collapsed" />
+
+        <!-- Button panel -->
+        <StackPanel Grid.Row="6"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button Name="SaveButton"
+                    Width="80"
+                    Height="28"
+                    Margin="0,0,8,0"
+                    Content="Save"
+                    IsDefault="True"
+                    Click="SaveButton_Click" />
+            <Button Name="CancelButton"
+                    Width="80"
+                    Height="28"
+                    Content="Cancel"
+                    IsCancel="True"
+                    Click="CancelButton_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

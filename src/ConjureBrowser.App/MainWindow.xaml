@@ -23,6 +23,8 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <Button Grid.Column="0" Name="BackButton" Width="36" Margin="0,0,6,0" Content="&lt;" Click="Back_Click" />
@@ -61,13 +63,54 @@
                         ToolTip="Open settings"
                         Click="SettingsButton_Click" />
 
-                <ToggleButton Grid.Column="9"
+                <Button Grid.Column="9"
+                        Name="HistoryButton"
+                        Width="36"
+                        Margin="0,0,6,0"
+                        Content="⏱"
+                        ToolTip="History (Ctrl+H)"
+                        Click="HistoryButton_Click" />
+
+                <Button Grid.Column="10"
+                        Name="DownloadsButton"
+                        Width="36"
+                        Margin="0,0,6,0"
+                        Content="⬇"
+                        ToolTip="Downloads (Ctrl+J)"
+                        Click="DownloadsButton_Click" />
+
+                <ToggleButton Grid.Column="11"
                               Name="AiPanelToggle"
                               Width="52"
                               Content="AI"
                               IsChecked="False"
                               ToolTip="Show/hide AI panel"
                               Click="AiPanelToggle_Click" />
+            </Grid>
+        </Border>
+
+        <!-- Bookmarks Bar -->
+        <Border DockPanel.Dock="Top"
+                Padding="6,2"
+                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+            <Grid>
+                <!-- Empty hint (visible when no bookmarks) -->
+                <TextBlock Name="BookmarksBarEmptyHint"
+                           Text="No bookmarks yet — click ☆ to add"
+                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                           VerticalAlignment="Center"
+                           Margin="4,0" />
+
+                <!-- Bookmarks scroll viewer (visible when bookmarks exist) -->
+                <ScrollViewer Name="BookmarksBarScroller"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed">
+                    <StackPanel Name="BookmarksBarPanel"
+                                Orientation="Horizontal" />
+                </ScrollViewer>
             </Grid>
         </Border>
 

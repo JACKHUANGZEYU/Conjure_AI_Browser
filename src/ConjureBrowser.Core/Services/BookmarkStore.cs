@@ -64,6 +64,63 @@ public sealed class BookmarkStore
         return true;
     }
 
+    public async Task<bool> RemoveAsync(string url)
+    {
+        var existing = _items.FirstOrDefault(b => string.Equals(b.Url, url, StringComparison.OrdinalIgnoreCase));
+        if (existing == null) return false;
+
+        _items.Remove(existing);
+        await SaveAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task<bool> UpdateAsync(string originalUrl, string newTitle, string newUrl)
+    {
+        // Validate inputs
+        if (string.IsNullOrWhiteSpace(newTitle) || string.IsNullOrWhiteSpace(newUrl))
+            return false;
+
+        var normalizedUrl = Utils.UrlHelpers.NormalizeUrl(newUrl);
+        if (normalizedUrl == null)
+            return false;
+
+        // Find the bookmark to update
+        var existing = _items.FirstOrDefault(b => string.Equals(b.Url, originalUrl, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+            return false;
+
+        // Check if the new URL is already used by a different bookmark (prevent duplicates)
+        if (!string.Equals(originalUrl, normalizedUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            var duplicate = _items.FirstOrDefault(b => string.Equals(b.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
+            if (duplicate != null)
+                return false; // Reject duplicate
+        }
+
+        // Update the bookmark
+        var index = _items.IndexOf(existing);
+        _items[index] = new Bookmark(newTitle.Trim(), normalizedUrl);
+
+        await SaveAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task<bool> MoveAsync(string url, int newIndex)
+    {
+        var existing = _items.FirstOrDefault(b => string.Equals(b.Url, url, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+            return false;
+
+        // Clamp newIndex to valid range
+        newIndex = Math.Clamp(newIndex, 0, _items.Count - 1);
+
+        _items.Remove(existing);
+        _items.Insert(newIndex, existing);
+
+        await SaveAsync().ConfigureAwait(false);
+        return true;
+    }
+
     public async Task SaveAsync()
     {
         var dir = Path.GetDirectoryName(FilePath);

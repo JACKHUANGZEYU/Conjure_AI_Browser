@@ -13,7 +13,7 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
 - .NET 8 (`net8.0-windows`), WPF
 - Embedded engine: CefSharp (`CefSharp.Wpf.NETCore`) on Chromium
 - Runtime: win-x64
-- AI: Gemini models (`gemini-2.5-flash`, `gemini-3.0-pro` -> API `gemini-3-pro-preview`)
+- AI: Gemini models (`gemini-2.5-flash`, `gemini-3.0-pro` -> API `gemini-3-pro-preview` via v1beta)
 
 ## Features
 - Navigation: address bar (Enter to go/search), Back/Forward/Reload/Home.

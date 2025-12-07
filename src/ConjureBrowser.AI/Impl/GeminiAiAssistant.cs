@@ -71,7 +71,7 @@ public sealed class GeminiAiAssistant : IAiAssistant
     private async Task<string> GenerateContentAsync(string prompt, string pageText, CancellationToken ct)
     {
         var apiModel = ResolveApiModel(Model);
-        const string apiVersion = "v1"; // use v1; v1beta 404s for these models
+        const string apiVersion = "v1beta"; // v1beta supports the preview 3.0 model
         var endpoint = $"https://generativelanguage.googleapis.com/{apiVersion}/models/{apiModel}:generateContent?key={ApiKey}";
 
         // Limit payload size to avoid huge requests.
@@ -140,7 +140,6 @@ public sealed class GeminiAiAssistant : IAiAssistant
             "gemini-3.0-pro" => "gemini-3-pro-preview",
             "gemini-3.0-pro-preview" => "gemini-3-pro-preview",
             "gemini-3-pro-preview" => "gemini-3-pro-preview",
-            "gemini-3.0-flash" => "gemini-2.5-flash",
             "gemini-2.5-flash" => "gemini-2.5-flash",
             _ => string.IsNullOrWhiteSpace(model) ? "gemini-2.5-flash" : model
         };

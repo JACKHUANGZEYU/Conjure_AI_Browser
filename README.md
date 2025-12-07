@@ -24,7 +24,12 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
 - AI: Gemini models (`gemini-2.5-flash`, `gemini-3.0-pro` -> API `gemini-3-pro-preview` via v1beta)
 
 ## Features
-- Navigation: address bar (Enter to go/search), Back/Forward/Reload/Home.
+- **Navigation**: Chrome-style address bar with smart URL detection.
+  - Type a domain (e.g., `google.com`, `github.com`) and press Enter to navigate directly.
+  - Type plain text (e.g., `kfc`, `weather today`) and press Enter to search Google.
+  - Explicit URLs with schemes (`https://`, `http://`, `file://`) work as expected.
+  - `localhost` and `localhost:port` are recognized as local development URLs.
+  - Back/Forward/Reload/Home buttons for standard navigation.
 - **Omnibox Suggestions**: Chrome-style autocomplete dropdown as you type in the address bar.
   - Shows suggestions from bookmarks (★), history (⏱), URL detection (🌐), and Google search (🔍).
   - Keyboard navigation: Up/Down arrows to select, Enter to navigate, Escape to close.

@@ -1,0 +1,17 @@
+﻿  姝ｅ湪纭畾瑕佽繕鍘熺殑椤圭洰鈥?
+  鎵€鏈夐」鐩潎鏄渶鏂扮殑锛屾棤娉曡繕鍘熴€?
+  ConjureBrowser.AI -> D:\Conjure_AI_Browser\src\ConjureBrowser.AI\bin\Debug\net8.0\ConjureBrowser.AI.dll
+  ConjureBrowser.Core -> D:\Conjure_AI_Browser\src\ConjureBrowser.Core\bin\Debug\net8.0\ConjureBrowser.Core.dll
+D:\Conjure_AI_Browser\src\ConjureBrowser.App\Services\TabDisplayHandler.cs(73,13): warning CS4014: 鐢变簬姝よ皟鐢ㄤ笉浼氱瓑寰咃紝鍥犳鍦ㄦ璋冪敤瀹屾垚涔嬪墠灏嗕細缁х画鎵ц褰撳墠鏂规硶銆傝鑰冭檻灏?"await" 杩愮畻绗﹀簲鐢ㄤ簬璋冪敤缁撴灉銆?[D:\Conjure_AI_Browser\src\ConjureBrowser.App\ConjureBrowser.App_jglwq0ko_wpftmp.csproj]
+D:\Conjure_AI_Browser\src\ConjureBrowser.App\MainWindow.xaml.cs(445,76): error CS1061: 鈥淒ependencyPropertyChangedEventArgs鈥濇湭鍖呭惈鈥淭itle鈥濈殑瀹氫箟锛屽苟涓旀壘涓嶅埌鍙帴鍙楃涓€涓€淒ependencyPropertyChangedEventArgs鈥濈被鍨嬪弬鏁扮殑鍙闂墿灞曟柟娉曗€淭itle鈥?鏄惁缂哄皯 using 鎸囦护鎴栫▼搴忛泦寮曠敤?) [D:\Conjure_AI_Browser\src\ConjureBrowser.App\ConjureBrowser.App_jglwq0ko_wpftmp.csproj]
+D:\Conjure_AI_Browser\src\ConjureBrowser.App\MainWindow.xaml.cs(447,80): error CS1061: 鈥淒ependencyPropertyChangedEventArgs鈥濇湭鍖呭惈鈥淎ddress鈥濈殑瀹氫箟锛屽苟涓旀壘涓嶅埌鍙帴鍙楃涓€涓€淒ependencyPropertyChangedEventArgs鈥濈被鍨嬪弬鏁扮殑鍙闂墿灞曟柟娉曗€淎ddress鈥?鏄惁缂哄皯 using 鎸囦护鎴栫▼搴忛泦寮曠敤?) [D:\Conjure_AI_Browser\src\ConjureBrowser.App\ConjureBrowser.App_jglwq0ko_wpftmp.csproj]
+
+鐢熸垚澶辫触銆?
+
+D:\Conjure_AI_Browser\src\ConjureBrowser.App\Services\TabDisplayHandler.cs(73,13): warning CS4014: 鐢变簬姝よ皟鐢ㄤ笉浼氱瓑寰咃紝鍥犳鍦ㄦ璋冪敤瀹屾垚涔嬪墠灏嗕細缁х画鎵ц褰撳墠鏂规硶銆傝鑰冭檻灏?"await" 杩愮畻绗﹀簲鐢ㄤ簬璋冪敤缁撴灉銆?[D:\Conjure_AI_Browser\src\ConjureBrowser.App\ConjureBrowser.App_jglwq0ko_wpftmp.csproj]
+D:\Conjure_AI_Browser\src\ConjureBrowser.App\MainWindow.xaml.cs(445,76): error CS1061: 鈥淒ependencyPropertyChangedEventArgs鈥濇湭鍖呭惈鈥淭itle鈥濈殑瀹氫箟锛屽苟涓旀壘涓嶅埌鍙帴鍙楃涓€涓€淒ependencyPropertyChangedEventArgs鈥濈被鍨嬪弬鏁扮殑鍙闂墿灞曟柟娉曗€淭itle鈥?鏄惁缂哄皯 using 鎸囦护鎴栫▼搴忛泦寮曠敤?) [D:\Conjure_AI_Browser\src\ConjureBrowser.App\ConjureBrowser.App_jglwq0ko_wpftmp.csproj]
+D:\Conjure_AI_Browser\src\ConjureBrowser.App\MainWindow.xaml.cs(447,80): error CS1061: 鈥淒ependencyPropertyChangedEventArgs鈥濇湭鍖呭惈鈥淎ddress鈥濈殑瀹氫箟锛屽苟涓旀壘涓嶅埌鍙帴鍙楃涓€涓€淒ependencyPropertyChangedEventArgs鈥濈被鍨嬪弬鏁扮殑鍙闂墿灞曟柟娉曗€淎ddress鈥?鏄惁缂哄皯 using 鎸囦护鎴栫▼搴忛泦寮曠敤?) [D:\Conjure_AI_Browser\src\ConjureBrowser.App\ConjureBrowser.App_jglwq0ko_wpftmp.csproj]
+    1 涓鍛?
+    2 涓敊璇?
+
+宸茬敤鏃堕棿 00:00:01.11

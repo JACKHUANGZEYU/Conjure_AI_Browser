@@ -4,10 +4,56 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:cef="clr-namespace:CefSharp.Wpf;assembly=CefSharp.Wpf"
+        xmlns:models="clr-namespace:ConjureBrowser.App.Models"
         mc:Ignorable="d"
         Title="Conjure Browser"
         Height="720"
         Width="1200">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+        <!-- DataTemplate for TabHeaderModel -->
+        <DataTemplate DataType="{x:Type models:TabHeaderModel}">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- Favicon placeholder (globe icon) - hidden by default, shown when favicon is null -->
+                <TextBlock x:Name="FaviconPlaceholder"
+                           Text="🌐"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Margin="0,0,4,0"
+                           Visibility="Collapsed" />
+                <!-- Favicon image - visible by default -->
+                <Image x:Name="FaviconImage"
+                       Source="{Binding Favicon}"
+                       Width="16"
+                       Height="16"
+                       VerticalAlignment="Center"
+                       Margin="0,0,4,0"
+                       Visibility="Visible" />
+                <!-- Title -->
+                <TextBlock Text="{Binding Title}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           MaxWidth="140" />
+                <!-- Loading indicator -->
+                <TextBlock Text="⟳"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Margin="4,0,0,0"
+                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                           Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <!-- When Favicon IS null, show placeholder and hide image -->
+                <DataTrigger Binding="{Binding Favicon}" Value="{x:Null}">
+                    <Setter TargetName="FaviconPlaceholder" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="FaviconImage" Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </Window.Resources>
+
     <DockPanel LastChildFill="True">
         <!-- Top toolbar -->
         <Border DockPanel.Dock="Top" Padding="6" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
@@ -18,8 +64,6 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -55,37 +99,72 @@
                               ToolTip="Bookmark this page"
                               Click="BookmarkButton_Click" />
 
-                <Button Grid.Column="8"
-                        Name="SettingsButton"
-                        Width="36"
-                        Margin="0,0,6,0"
-                        Content="⚙"
-                        ToolTip="Open settings"
-                        Click="SettingsButton_Click" />
-
-                <Button Grid.Column="9"
-                        Name="HistoryButton"
-                        Width="36"
-                        Margin="0,0,6,0"
-                        Content="⏱"
-                        ToolTip="History (Ctrl+H)"
-                        Click="HistoryButton_Click" />
-
-                <Button Grid.Column="10"
-                        Name="DownloadsButton"
-                        Width="36"
-                        Margin="0,0,6,0"
-                        Content="⬇"
-                        ToolTip="Downloads (Ctrl+J)"
-                        Click="DownloadsButton_Click" />
-
-                <ToggleButton Grid.Column="11"
+                <ToggleButton Grid.Column="8"
                               Name="AiPanelToggle"
                               Width="52"
                               Content="AI"
                               IsChecked="False"
                               ToolTip="Show/hide AI panel"
                               Click="AiPanelToggle_Click" />
+
+                <!-- App Menu Button -->
+                <Button Grid.Column="9"
+                        Name="AppMenuButton"
+                        Width="36"
+                        Margin="0,0,0,0"
+                        Content="⋮"
+                        FontSize="16"
+                        FontWeight="Bold"
+                        ToolTip="Menu"
+                        Click="AppMenuButton_Click">
+                    <Button.ContextMenu>
+                        <ContextMenu x:Name="AppMenu" MinWidth="220" Opened="AppMenu_Opened">
+                            <!-- New -->
+                            <MenuItem Header="_New Tab" InputGestureText="Ctrl+T" Click="NewTabFromMenu_Click">
+                                <MenuItem.Icon>
+                                    <TextBlock Text="+" FontWeight="Bold" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <Separator />
+                            <!-- Library -->
+                            <MenuItem Header="_History" InputGestureText="Ctrl+H" Click="HistoryFromMenu_Click">
+                                <MenuItem.Icon>
+                                    <TextBlock Text="⏱" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="_Downloads" InputGestureText="Ctrl+J" Click="DownloadsFromMenu_Click">
+                                <MenuItem.Icon>
+                                    <TextBlock Text="⬇" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <Separator />
+                            <!-- Page -->
+                            <MenuItem x:Name="FindInPageMenuItem" Header="_Find in Page…" InputGestureText="Ctrl+F" Click="FindInPageFromMenu_Click">
+                                <MenuItem.Icon>
+                                    <TextBlock Text="🔎" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <Separator />
+                            <!-- App -->
+                            <MenuItem Header="_Settings" Click="SettingsFromMenu_Click">
+                                <MenuItem.Icon>
+                                    <TextBlock Text="⚙" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="_About" Click="AboutFromMenu_Click">
+                                <MenuItem.Icon>
+                                    <TextBlock Text="ℹ" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <Separator />
+                            <MenuItem Header="E_xit" InputGestureText="Alt+F4" Click="ExitFromMenu_Click">
+                                <MenuItem.Icon>
+                                    <TextBlock Text="✕" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
             </Grid>
         </Border>
 
@@ -134,32 +213,84 @@
                             Click="NewTab_Click"
                             ToolTip="New tab" />
 
-                    <TabControl x:Name="Tabs"
-                                SelectionChanged="Tabs_SelectionChanged">
-                        <TabControl.ItemContainerStyle>
-                            <Style TargetType="TabItem">
-                                <Setter Property="HeaderTemplate">
-                                    <Setter.Value>
-                                        <DataTemplate>
-                                            <DockPanel LastChildFill="True" Margin="2,0">
-                                                <TextBlock Text="{Binding Header, RelativeSource={RelativeSource AncestorType=TabItem}}"
-                                                           Margin="6,0,4,0"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Width="180" />
-                                                <Button Width="16"
-                                                        Height="16"
-                                                        Padding="0"
-                                                        Margin="4,0,4,0"
-                                                        Content="×"
-                                                        Tag="{Binding RelativeSource={RelativeSource AncestorType=TabItem}}"
-                                                        Click="CloseTab_Click" />
-                                            </DockPanel>
-                                        </DataTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </TabControl.ItemContainerStyle>
-                    </TabControl>
+                    <Grid>
+                        <TabControl x:Name="Tabs"
+                                    SelectionChanged="Tabs_SelectionChanged">
+                            <TabControl.ItemContainerStyle>
+                                <Style TargetType="TabItem">
+                                    <Setter Property="HeaderTemplate">
+                                        <Setter.Value>
+                                            <DataTemplate>
+                                                <DockPanel LastChildFill="True" Margin="2,0">
+                                                    <!-- Content presenter for TabHeaderModel or string -->
+                                                    <ContentPresenter Content="{Binding Header, RelativeSource={RelativeSource AncestorType=TabItem}}"
+                                                                      VerticalAlignment="Center" />
+                                                    <Button Width="16"
+                                                            Height="16"
+                                                            Padding="0"
+                                                            Margin="4,0,4,0"
+                                                            Content="×"
+                                                            Tag="{Binding RelativeSource={RelativeSource AncestorType=TabItem}}"
+                                                            Click="CloseTab_Click" />
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </TabControl.ItemContainerStyle>
+                        </TabControl>
+
+                        <!-- Find bar overlay -->
+                        <Border x:Name="FindBarContainer"
+                                Visibility="Collapsed"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="10,32,10,0"
+                                Padding="8,6"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBox x:Name="FindTextBox"
+                                         Width="220"
+                                         VerticalContentAlignment="Center"
+                                         TextChanged="FindTextBox_TextChanged"
+                                         PreviewKeyDown="FindTextBox_PreviewKeyDown" />
+                                <ToggleButton x:Name="FindMatchCaseToggle"
+                                              Width="28"
+                                              Margin="6,0,0,0"
+                                              Content="Aa"
+                                              ToolTip="Match case"
+                                              Checked="FindMatchCaseToggle_Changed"
+                                              Unchecked="FindMatchCaseToggle_Changed" />
+                                <Button x:Name="FindPrevButton"
+                                        Width="28"
+                                        Margin="6,0,0,0"
+                                        Content="↑"
+                                        ToolTip="Previous (Shift+Enter)"
+                                        Click="FindPrevButton_Click" />
+                                <Button x:Name="FindNextButton"
+                                        Width="28"
+                                        Margin="2,0,0,0"
+                                        Content="↓"
+                                        ToolTip="Next (Enter)"
+                                        Click="FindNextButton_Click" />
+                                <TextBlock x:Name="FindCountText"
+                                           Text="0/0"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0,0,0"
+                                           MinWidth="40"
+                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                                <Button x:Name="FindCloseButton"
+                                        Width="24"
+                                        Margin="6,0,0,0"
+                                        Content="✕"
+                                        ToolTip="Close (Esc)"
+                                        Click="FindCloseButton_Click" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
                 </DockPanel>
             </Grid>
 

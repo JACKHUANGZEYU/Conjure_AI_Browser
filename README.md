@@ -1,3 +1,11 @@
+## Running
+From repo root:
+```powershell
+dotnet restore
+dotnet build
+dotnet run --project .\src\ConjureBrowser.App
+```
+
 # Conjure AI Browser (WPF + CEF/Chromium)
 
 Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemini assistant.
@@ -37,13 +45,94 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - Actions: Open file, Show in folder, Cancel (for in-progress downloads).
   - Right-click for context menu: Open, Show in folder, Copy URL, Remove from list.
   - Note: Removing from list does not delete the downloaded file.
+- **Tab Favicons + Live Titles**: Chrome-style tab headers with site icons and live page titles.
+  - Each tab displays a 16x16 favicon fetched from the site.
+  - Fallback globe icon (🌐) shown when no favicon is available.
+  - Page titles update live as you navigate (window title also updates).
+  - Loading indicator (⟳) appears while pages are loading.
+  - Favicons are cached per-host to reduce repeated requests.
+  - SVG favicons are skipped (WPF doesn't render SVG natively); fallback to /favicon.ico.
 - Tabs: multiple Chromium tabs with close buttons and a `+` new-tab button.
 - AI panel (per tab, toggle via `AI`):
   - Model picker only; uses the global API key from the Settings tab.
   - Chat-style log with per-tab conversation memory; scrollable log and fixed-height input with send button.
   - Uses current page text AND visual content (screenshots) as context when answering.
   - Can analyze images, maps, charts, and other visual elements on the page.
-- Settings tab (gear button): set a global Gemini API key shared across existing and new tabs (only place to enter it).
+- **Find in Page**: Chrome-style find overlay for searching within web pages.
+  - Open with Ctrl+F; type to search with incremental highlighting.
+  - Enter for next match, Shift+Enter for previous match.
+  - Toggle "Aa" button for case-sensitive search.
+  - Shows match count as "active/total" (e.g., "2/10").
+  - Escape closes the find bar and clears highlights.
+  - Only works on web tabs (not History/Downloads/Settings).
+- **Session Restore**: Automatically reopens your last browsing session on startup.
+  - Restores all web tabs in the same order with the same selected tab.
+  - Saves session periodically (every ~750ms after changes) for crash safety.
+  - Final save on normal app close guarantees session is captured.
+  - Internal tabs (History/Downloads/Settings) are not restored.
+  - Maximum 20 tabs restored to prevent runaway restores.
+  - Session stored in `%LocalAppData%\ConjureBrowser\session.json`.
+  - Corrupt session files are renamed to `session.corrupt.json` for debugging.
+- **App Menu (⋮)**: Chrome-style menu button at the top-right of the toolbar for quick access to common actions.
+  - Click the "⋮" button to open the menu.
+  - Menu contains: New Tab, History, Downloads, Find in Page, Settings, About, Exit.
+  - Keyboard shortcuts are shown next to each menu item.
+  - "Find in Page" is only enabled when viewing a web tab (disabled on History/Downloads/Settings tabs).
+  - History, Downloads, and Settings toolbar buttons have been moved into this menu to reduce toolbar clutter.
+  - All actions still work via keyboard shortcuts (Ctrl+H, Ctrl+J, Ctrl+F, etc.).
+- Settings tab (via App Menu → Settings): set a global Gemini API key shared across existing and new tabs.
+
+## Keyboard Shortcuts
+
+Chrome-style keyboard shortcuts work across web tabs and internal tabs (History/Downloads/Settings).
+
+### Address Bar
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+L | Focus address bar and select all |
+| Ctrl+K | Focus address bar and select all |
+
+### Tabs
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+T | Open new tab |
+| Ctrl+W | Close current tab (closes window if last tab) |
+| Ctrl+Shift+T | Reopen last closed web tab (up to 20 saved) |
+| Ctrl+Tab | Switch to next tab |
+| Ctrl+Shift+Tab | Switch to previous tab |
+| Ctrl+1 to Ctrl+8 | Jump to tab 1-8 |
+| Ctrl+9 | Jump to last tab |
+
+### Navigation (Web Tabs Only)
+| Shortcut | Action |
+|----------|--------|
+| Alt+Left | Go back |
+| Alt+Right | Go forward |
+| F5 | Reload page |
+| Ctrl+R | Reload page |
+| Ctrl+F5 | Hard reload (ignore cache) |
+| Escape | Stop loading (if page is loading) |
+
+### Features
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+F | Open Find in Page overlay |
+| Ctrl+H | Open History tab |
+| Ctrl+J | Open Downloads tab |
+
+### Find in Page (when find bar is open)
+| Shortcut | Action |
+|----------|--------|
+| Enter | Find next match |
+| Shift+Enter | Find previous match |
+| Escape | Close find bar and clear highlights |
+
+**Notes:**
+- Shortcuts do not interfere with typing in text fields (copy/paste still works normally).
+- Ctrl+Shift+T only reopens web tabs (not History/Downloads/Settings tabs).
+- Alt+Left/Right only work on web tabs; they do nothing on internal tabs.
+- Find in Page (Ctrl+F) only works on web tabs.
+- Escape closes find bar first; if find bar is closed, stops page loading.
 
 ## Downloads
 - What changed: Added automatic download handling with a dedicated Downloads tab (⬇/Ctrl+J) that tracks progress, allows canceling, and opens completed files/folders.

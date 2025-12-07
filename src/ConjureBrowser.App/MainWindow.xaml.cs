@@ -11,6 +11,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using CefSharp;
 using CefSharp.Wpf;
 using ConjureBrowser.AI.Impl;
@@ -48,13 +49,45 @@ public partial class MainWindow : Window
     private TabItem? _downloadsTab;
     private ListView? _downloadsListView;
 
+    // Recently closed tabs for Ctrl+Shift+T
+    private readonly List<ClosedTabInfo> _recentlyClosedTabs = new();
+    private const int MaxRecentlyClosedTabs = 20;
+
+    // Find in page
+    private readonly FindInPageManager _findManager;
+    private DispatcherTimer? _findDebounceTimer;
+
+    // Tab header model tracking (for favicon + title updates)
+    private readonly FaviconService _faviconService = new();
+    private readonly Dictionary<ChromiumWebBrowser, TabHeaderModel> _headersByBrowser = new();
+
+    // Session restore
+    private readonly SessionStore _sessionStore = new();
+    private readonly DispatcherTimer _sessionSaveDebounce;
+    private const int MaxRestoredTabs = 20;
+
     private const string HomeUrl = "https://www.google.com";
 
     public MainWindow()
     {
         _ai = new GeminiAiAssistant(_httpClient, string.Empty, "gemini-2.5-flash");
+        _findManager = new FindInPageManager(Dispatcher);
+        _findManager.FindResultUpdated += OnFindResultUpdated;
+
+        // Session save debounce timer
+        _sessionSaveDebounce = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(750)
+        };
+        _sessionSaveDebounce.Tick += (_, _) =>
+        {
+            _sessionSaveDebounce.Stop();
+            SaveSessionNow();
+        };
+
         InitializeComponent();
         Loaded += MainWindow_Loaded;
+        Closing += MainWindow_Closing;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
     }
 
@@ -71,8 +104,73 @@ public partial class MainWindow : Window
         }
 
         Tabs.Items.Clear();
-        AddNewTab(HomeUrl);
+
+        // Try to restore session
+        var session = await _sessionStore.LoadAsync();
+        var restored = false;
+
+        if (session?.Tabs?.Count > 0)
+        {
+            var tabsToRestore = session.Tabs.Take(MaxRestoredTabs).ToList();
+
+            for (int i = 0; i < tabsToRestore.Count; i++)
+            {
+                var sessionTab = tabsToRestore[i];
+                if (!string.IsNullOrEmpty(sessionTab.Url))
+                {
+                    AddNewTab(sessionTab.Url, activate: false, initialTitle: sessionTab.Title);
+                }
+            }
+
+            if (Tabs.Items.Count > 0)
+            {
+                restored = true;
+                // Select the previously selected tab (clamped to valid range)
+                var selectIndex = Math.Clamp(session.SelectedWebTabIndex, 0, Tabs.Items.Count - 1);
+                Tabs.SelectedIndex = selectIndex;
+            }
+        }
+
+        // If no session restored, create default tab
+        if (!restored)
+        {
+            AddNewTab(HomeUrl);
+        }
+
         UpdateAiPanelVisibility();
+    }
+
+    private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        try
+        {
+            // Stop debounce timer
+            _sessionSaveDebounce.Stop();
+
+            // Final save on exit - use synchronous write to avoid deadlock
+            var state = CaptureSessionState();
+            var json = System.Text.Json.JsonSerializer.Serialize(state, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+            });
+
+            var dataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ConjureBrowser");
+
+            if (!Directory.Exists(dataFolder))
+            {
+                Directory.CreateDirectory(dataFolder);
+            }
+
+            var filePath = Path.Combine(dataFolder, "session.json");
+            File.WriteAllText(filePath, json);
+        }
+        catch
+        {
+            // Don't prevent shutdown
+        }
     }
 
     // ---------- Tabs and navigation ----------
@@ -302,6 +400,9 @@ public partial class MainWindow : Window
             ReloadButton.IsEnabled = false;
             AddressBar.Text = tabItem == _settingsTab ? "settings" : string.Empty;
         }
+
+        UpdateWindowTitle();
+        RequestSessionSave();
     }
 
     private void NewTab_Click(object sender, RoutedEventArgs e) => AddNewTab(HomeUrl);
@@ -309,9 +410,35 @@ public partial class MainWindow : Window
     private void CloseTab_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button btn || btn.Tag is not TabItem tabItem) return;
+        CloseTabItem(tabItem);
+    }
 
+    private void CloseCurrentTab()
+    {
+        if (Tabs.SelectedItem is TabItem tabItem)
+        {
+            CloseTabItem(tabItem);
+        }
+    }
+
+    private void CloseTabItem(TabItem tabItem)
+    {
         if (tabItem.Tag is BrowserTab tab)
         {
+            // Save to recently closed list if it's a web tab with valid URL
+            var url = tab.Browser.Address;
+            if (!string.IsNullOrWhiteSpace(url) && url != "about:blank")
+            {
+                _recentlyClosedTabs.Add(new ClosedTabInfo { Url = url, Title = tab.Title });
+                while (_recentlyClosedTabs.Count > MaxRecentlyClosedTabs)
+                {
+                    _recentlyClosedTabs.RemoveAt(0);
+                }
+            }
+
+            // Clean up header model tracking
+            _headersByBrowser.Remove(tab.Browser);
+
             _tabs.Remove(tab);
 
             if (ReferenceEquals(_lastActiveBrowserTab, tab))
@@ -346,23 +473,34 @@ public partial class MainWindow : Window
 
         if (Tabs.Items.Count == 0)
         {
-            AddNewTab(HomeUrl);
+            // Last tab closed - close the window (Chrome-like behavior)
+            Close();
         }
         else if (ReferenceEquals(Tabs.SelectedItem, tabItem))
         {
             Tabs.SelectedIndex = Math.Max(0, Tabs.Items.Count - 1);
         }
+
+        // Save session after tab closed
+        RequestSessionSave();
     }
 
-    private void AddNewTab(string? initialUrl = null)
+    private void AddNewTab(string? initialUrl = null, bool activate = true, string? initialTitle = null)
     {
         var browser = new ChromiumWebBrowser();
 
-        var initialTitle = string.IsNullOrWhiteSpace(initialUrl) ? "New Tab" : initialUrl!;
+        var title = initialTitle ?? (string.IsNullOrWhiteSpace(initialUrl) ? "New Tab" : initialUrl!);
+
+        // Create tab header model for favicon/title/loading display
+        var headerModel = new TabHeaderModel
+        {
+            Title = title,
+            Url = initialUrl ?? HomeUrl
+        };
 
         var tabItem = new TabItem
         {
-            Header = initialTitle,
+            Header = headerModel,
             Content = browser
         };
 
@@ -370,7 +508,7 @@ public partial class MainWindow : Window
         {
             Browser = browser,
             TabItem = tabItem,
-            Title = initialTitle,
+            Title = title,
             Model = GetSelectedModel(),
             ApiKey = _globalApiKey,
             AiVisible = false
@@ -383,18 +521,187 @@ public partial class MainWindow : Window
         // Set download handler
         browser.DownloadHandler = _downloadManager;
 
+        // Set find handler
+        _findManager.Attach(browser);
+
+        // Set display handler for favicon capture
+        browser.DisplayHandler = new TabDisplayHandler(headerModel, _faviconService, Dispatcher);
+        _headersByBrowser[browser] = headerModel;
+
+        // Register events for title/loading/address updates
+        browser.TitleChanged += (s, e) => OnBrowserTitleChanged(browser, e.NewValue as string ?? browser.Title);
+        browser.LoadingStateChanged += (s, e) => OnBrowserLoadingStateChanged(browser, e.IsLoading);
+        browser.AddressChanged += (s, e) => OnBrowserAddressChanged(browser, e.NewValue as string ?? browser.Address);
+
         // Set address after events are attached so FrameLoadEnd can capture it.
         browser.Address = initialUrl ?? HomeUrl;
 
         Tabs.Items.Add(tabItem);
         _tabs.Add(tab);
-        Tabs.SelectedItem = tabItem;
-        _activeTab = tab;
-        _lastActiveBrowserTab = tab;
 
-        UpdateTabHeader(tab);
-        UpdateAiPanelVisibility();
-        SyncUiToActiveTab();
+        if (activate)
+        {
+            Tabs.SelectedItem = tabItem;
+            _activeTab = tab;
+            _lastActiveBrowserTab = tab;
+            UpdateWindowTitle();
+            UpdateAiPanelVisibility();
+            SyncUiToActiveTab();
+        }
+
+        // Save session when tab added
+        RequestSessionSave();
+    }
+
+    // ---------- Tab Header Updates (Favicon, Title, Loading) ----------
+
+    private void OnBrowserTitleChanged(ChromiumWebBrowser browser, string title)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (_headersByBrowser.TryGetValue(browser, out var header))
+            {
+                header.Title = string.IsNullOrEmpty(title) ? "New Tab" : title;
+
+                // Also update the BrowserTab.Title for backwards compatibility
+                var tab = _tabs.FirstOrDefault(t => t.Browser == browser);
+                if (tab != null)
+                {
+                    tab.Title = header.Title;
+                }
+
+                // Update window title if this is the active tab
+                if (_activeTab?.Browser == browser)
+                {
+                    UpdateWindowTitle();
+                }
+            }
+        });
+    }
+
+    private void OnBrowserLoadingStateChanged(ChromiumWebBrowser browser, bool isLoading)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (_headersByBrowser.TryGetValue(browser, out var header))
+            {
+                header.IsLoading = isLoading;
+            }
+        });
+    }
+
+    private void OnBrowserAddressChanged(ChromiumWebBrowser browser, string address)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (_headersByBrowser.TryGetValue(browser, out var header))
+            {
+                header.Url = address;
+            }
+
+            // Update address bar if this is the active tab
+            if (_activeTab?.Browser == browser)
+            {
+                AddressBar.Text = address;
+            }
+
+            // Save session on navigation
+            RequestSessionSave();
+        });
+    }
+
+    private void UpdateWindowTitle()
+    {
+        if (_activeTab != null && _headersByBrowser.TryGetValue(_activeTab.Browser, out var header))
+        {
+            Title = $"{header.Title} - Conjure AI Browser";
+        }
+        else if (Tabs.SelectedItem == _settingsTab)
+        {
+            Title = "Settings - Conjure AI Browser";
+        }
+        else if (Tabs.SelectedItem == _historyTab)
+        {
+            Title = "History - Conjure AI Browser";
+        }
+        else if (Tabs.SelectedItem == _downloadsTab)
+        {
+            Title = "Downloads - Conjure AI Browser";
+        }
+        else
+        {
+            Title = "Conjure AI Browser";
+        }
+    }
+
+    // ---------- Session Save ----------
+
+    private void RequestSessionSave()
+    {
+        _sessionSaveDebounce.Stop();
+        _sessionSaveDebounce.Start();
+    }
+
+    private void SaveSessionNow()
+    {
+        try
+        {
+            var state = CaptureSessionState();
+            _ = _sessionStore.SaveAsync(state);
+        }
+        catch
+        {
+            // Ignore save errors
+        }
+    }
+
+    private SessionState CaptureSessionState()
+    {
+        var state = new SessionState
+        {
+            SavedAtUtc = DateTimeOffset.UtcNow,
+            Tabs = new List<SessionTab>()
+        };
+
+        var webTabIndex = 0;
+        var selectedWebTabIndex = 0;
+
+        foreach (TabItem tabItem in Tabs.Items)
+        {
+            // Only capture web tabs
+            if (tabItem.Content is ChromiumWebBrowser browser && tabItem.Tag is BrowserTab)
+            {
+                var url = browser.Address;
+
+                // Skip invalid URLs
+                if (string.IsNullOrEmpty(url) ||
+                    url == "about:blank" ||
+                    url.StartsWith("chrome-devtools://", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // Get title from header model if available
+                string? title = null;
+                if (_headersByBrowser.TryGetValue(browser, out var header))
+                {
+                    title = header.Title;
+                }
+
+                state.Tabs.Add(new SessionTab(url, title));
+
+                // Track selected tab index among web tabs
+                if (Tabs.SelectedItem == tabItem)
+                {
+                    selectedWebTabIndex = webTabIndex;
+                }
+
+                webTabIndex++;
+            }
+        }
+
+        state.SelectedWebTabIndex = selectedWebTabIndex;
+        return state;
     }
 
     // ---------- Bookmarks ----------
@@ -917,17 +1224,429 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.H && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+        var shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+        var alt = (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt;
+
+        // === Address bar focus ===
+        // Ctrl+L or Ctrl+K: Focus address bar
+        if (ctrl && !shift && !alt && (e.Key == Key.L || e.Key == Key.K))
+        {
+            FocusAddressBar();
+            e.Handled = true;
+            return;
+        }
+
+        // === Tab management ===
+        // Ctrl+T: New tab
+        if (ctrl && !shift && !alt && e.Key == Key.T)
+        {
+            AddNewTab(HomeUrl);
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+W: Close current tab
+        if (ctrl && !shift && !alt && e.Key == Key.W)
+        {
+            CloseCurrentTab();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+Shift+T: Reopen last closed tab
+        if (ctrl && shift && !alt && e.Key == Key.T)
+        {
+            ReopenLastClosedTab();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+Tab: Next tab
+        if (ctrl && !shift && !alt && e.Key == Key.Tab)
+        {
+            CycleToNextTab();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+Shift+Tab: Previous tab
+        if (ctrl && shift && !alt && e.Key == Key.Tab)
+        {
+            CycleToPreviousTab();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+1..8: Jump to tab 1-8
+        if (ctrl && !shift && !alt)
+        {
+            int? tabIndex = e.Key switch
+            {
+                Key.D1 => 0,
+                Key.D2 => 1,
+                Key.D3 => 2,
+                Key.D4 => 3,
+                Key.D5 => 4,
+                Key.D6 => 5,
+                Key.D7 => 6,
+                Key.D8 => 7,
+                _ => null
+            };
+            if (tabIndex.HasValue)
+            {
+                SelectTabByIndex(tabIndex.Value);
+                e.Handled = true;
+                return;
+            }
+        }
+
+        // Ctrl+9: Jump to last tab
+        if (ctrl && !shift && !alt && e.Key == Key.D9)
+        {
+            SelectTabByIndex(Tabs.Items.Count - 1);
+            e.Handled = true;
+            return;
+        }
+
+        // === Navigation (web tabs only) ===
+        var browser = GetActiveBrowser();
+
+        // Alt+Left: Back
+        if (!ctrl && !shift && alt && e.Key == Key.Left)
+        {
+            if (browser?.CanGoBack == true)
+            {
+                browser.Back();
+            }
+            e.Handled = true;
+            return;
+        }
+
+        // Alt+Right: Forward
+        if (!ctrl && !shift && alt && e.Key == Key.Right)
+        {
+            if (browser?.CanGoForward == true)
+            {
+                browser.Forward();
+            }
+            e.Handled = true;
+            return;
+        }
+
+        // F5: Reload
+        if (!ctrl && !shift && !alt && e.Key == Key.F5)
+        {
+            browser?.Reload();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+R: Reload
+        if (ctrl && !shift && !alt && e.Key == Key.R)
+        {
+            browser?.Reload();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+F5: Hard reload (ignore cache)
+        if (ctrl && !shift && !alt && e.Key == Key.F5)
+        {
+            browser?.Reload(ignoreCache: true);
+            e.Handled = true;
+            return;
+        }
+
+        // Escape: Close find bar first, then stop loading
+        if (!ctrl && !shift && !alt && e.Key == Key.Escape)
+        {
+            // First priority: close find bar if open
+            if (FindBarContainer.Visibility == Visibility.Visible)
+            {
+                CloseFindBar();
+                e.Handled = true;
+                return;
+            }
+
+            // Second priority: stop loading
+            if (browser?.IsLoading == true)
+            {
+                browser.Stop();
+                e.Handled = true;
+                return;
+            }
+        }
+
+        // === Feature shortcuts ===
+        // Ctrl+F: Find in page
+        if (ctrl && !shift && !alt && e.Key == Key.F)
+        {
+            ShowFindBar();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+H: History
+        if (ctrl && !shift && !alt && e.Key == Key.H)
         {
             OpenHistoryTab();
             e.Handled = true;
+            return;
         }
 
-        if (e.Key == Key.J && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        // Ctrl+J: Downloads
+        if (ctrl && !shift && !alt && e.Key == Key.J)
         {
             OpenDownloadsTab();
             e.Handled = true;
+            return;
         }
+    }
+
+    // === Keyboard shortcut helper methods ===
+
+    private void FocusAddressBar()
+    {
+        AddressBar.Focus();
+        AddressBar.SelectAll();
+    }
+
+    private ChromiumWebBrowser? GetActiveBrowser()
+    {
+        if (Tabs.SelectedItem is TabItem tabItem && tabItem.Tag is BrowserTab tab)
+        {
+            return tab.Browser;
+        }
+        return null;
+    }
+
+    private void ReopenLastClosedTab()
+    {
+        if (_recentlyClosedTabs.Count == 0) return;
+
+        var lastClosed = _recentlyClosedTabs[^1];
+        _recentlyClosedTabs.RemoveAt(_recentlyClosedTabs.Count - 1);
+        AddNewTab(lastClosed.Url);
+    }
+
+    private void CycleToNextTab()
+    {
+        if (Tabs.Items.Count <= 1) return;
+        Tabs.SelectedIndex = (Tabs.SelectedIndex + 1) % Tabs.Items.Count;
+    }
+
+    private void CycleToPreviousTab()
+    {
+        if (Tabs.Items.Count <= 1) return;
+        Tabs.SelectedIndex = (Tabs.SelectedIndex - 1 + Tabs.Items.Count) % Tabs.Items.Count;
+    }
+
+    private void SelectTabByIndex(int index)
+    {
+        if (index >= 0 && index < Tabs.Items.Count)
+        {
+            Tabs.SelectedIndex = index;
+        }
+    }
+
+    // === Find in Page ===
+
+    private void ShowFindBar()
+    {
+        var browser = GetActiveBrowser();
+        if (browser == null) return; // Only works on web tabs
+
+        FindBarContainer.Visibility = Visibility.Visible;
+        FindTextBox.Focus();
+        FindTextBox.SelectAll();
+
+        // If there's existing text, start a search
+        if (!string.IsNullOrEmpty(FindTextBox.Text))
+        {
+            _findManager.StartNewSearch(browser, FindTextBox.Text, FindMatchCaseToggle.IsChecked == true);
+        }
+    }
+
+    private void CloseFindBar()
+    {
+        FindBarContainer.Visibility = Visibility.Collapsed;
+
+        var browser = GetActiveBrowser();
+        if (browser != null)
+        {
+            _findManager.Stop(browser, clearSelection: true);
+        }
+
+        FindCountText.Text = "0/0";
+    }
+
+    private void OnFindResultUpdated(ChromiumWebBrowser browser, int activeOrdinal, int count, bool finalUpdate)
+    {
+        // Only update UI if this is the active browser
+        var activeBrowser = GetActiveBrowser();
+        if (activeBrowser != browser) return;
+
+        if (count <= 0)
+        {
+            FindCountText.Text = "0/0";
+        }
+        else
+        {
+            FindCountText.Text = $"{activeOrdinal}/{count}";
+        }
+    }
+
+    private void FindTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        // Debounce search to avoid firing on every keystroke
+        _findDebounceTimer?.Stop();
+        _findDebounceTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(150)
+        };
+        _findDebounceTimer.Tick += (_, __) =>
+        {
+            _findDebounceTimer.Stop();
+            PerformFind();
+        };
+        _findDebounceTimer.Start();
+    }
+
+    private void PerformFind()
+    {
+        var browser = GetActiveBrowser();
+        if (browser == null) return;
+
+        var text = FindTextBox.Text;
+        if (string.IsNullOrEmpty(text))
+        {
+            _findManager.Stop(browser, clearSelection: true);
+            FindCountText.Text = "0/0";
+        }
+        else
+        {
+            _findManager.StartNewSearch(browser, text, FindMatchCaseToggle.IsChecked == true);
+        }
+    }
+
+    private void FindTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            var browser = GetActiveBrowser();
+            if (browser != null && !string.IsNullOrEmpty(FindTextBox.Text))
+            {
+                var forward = (Keyboard.Modifiers & ModifierKeys.Shift) != ModifierKeys.Shift;
+                _findManager.FindNext(browser, forward);
+            }
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            CloseFindBar();
+            e.Handled = true;
+        }
+    }
+
+    private void FindPrevButton_Click(object sender, RoutedEventArgs e)
+    {
+        var browser = GetActiveBrowser();
+        if (browser != null && !string.IsNullOrEmpty(FindTextBox.Text))
+        {
+            _findManager.FindNext(browser, forward: false);
+        }
+    }
+
+    private void FindNextButton_Click(object sender, RoutedEventArgs e)
+    {
+        var browser = GetActiveBrowser();
+        if (browser != null && !string.IsNullOrEmpty(FindTextBox.Text))
+        {
+            _findManager.FindNext(browser, forward: true);
+        }
+    }
+
+    private void FindCloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        CloseFindBar();
+    }
+
+    private void FindMatchCaseToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        // Re-search with new match case setting
+        var browser = GetActiveBrowser();
+        if (browser != null && !string.IsNullOrEmpty(FindTextBox.Text))
+        {
+            _findManager.StartNewSearch(browser, FindTextBox.Text, FindMatchCaseToggle.IsChecked == true);
+        }
+    }
+
+    // ---------- App Menu ----------
+
+    private void AppMenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppMenuButton.ContextMenu != null)
+        {
+            AppMenuButton.ContextMenu.PlacementTarget = AppMenuButton;
+            AppMenuButton.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            AppMenuButton.ContextMenu.IsOpen = true;
+        }
+    }
+
+    private void AppMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        // Find in Page is only available on web tabs
+        var browser = GetActiveBrowser();
+        FindInPageMenuItem.IsEnabled = browser != null;
+    }
+
+    private void NewTabFromMenu_Click(object sender, RoutedEventArgs e)
+    {
+        AddNewTab(HomeUrl);
+    }
+
+    private void HistoryFromMenu_Click(object sender, RoutedEventArgs e)
+    {
+        OpenHistoryTab();
+    }
+
+    private void DownloadsFromMenu_Click(object sender, RoutedEventArgs e)
+    {
+        OpenDownloadsTab();
+    }
+
+    private void FindInPageFromMenu_Click(object sender, RoutedEventArgs e)
+    {
+        ShowFindBar();
+    }
+
+    private void SettingsFromMenu_Click(object sender, RoutedEventArgs e)
+    {
+        OpenSettingsTab();
+    }
+
+    private void AboutFromMenu_Click(object sender, RoutedEventArgs e)
+    {
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        var versionStr = version != null ? version.ToString() : "1.0.0";
+
+        MessageBox.Show(
+            $"Conjure AI Browser\n\nVersion: {versionStr}\n\nPowered by Chromium via CefSharp",
+            "About Conjure AI Browser",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private void ExitFromMenu_Click(object sender, RoutedEventArgs e)
+    {
+        Application.Current.Shutdown();
+    }
+
+    private void OpenSettingsTab()
+    {
+        // Reuse existing settings tab logic from SettingsButton_Click
+        SettingsButton_Click(this, new RoutedEventArgs());
     }
 
     private void HistoryButton_Click(object sender, RoutedEventArgs e)
@@ -1218,6 +1937,7 @@ public partial class MainWindow : Window
         if (_downloadsTab != null)
         {
             Tabs.SelectedItem = _downloadsTab;
+            RefreshDownloadsList();
             return;
         }
 
@@ -1252,7 +1972,7 @@ public partial class MainWindow : Window
             var downloadsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 "Downloads");
-            Process.Start("explorer.exe", downloadsPath);
+            try { Process.Start("explorer.exe", downloadsPath); } catch { }
         };
         topPanel.Children.Add(openFolderButton);
 
@@ -1260,105 +1980,17 @@ public partial class MainWindow : Window
         grid.Children.Add(topPanel);
 
         // ListView for downloads
-        _downloadsListView = new ListView
+        _downloadsListView = new ListView { Margin = new Thickness(0) };
+        _downloadsListView.MouseDoubleClick += (s, e) =>
         {
-            Margin = new Thickness(0)
+            if (_downloadsListView.SelectedItem is ListViewItem item && item.Tag is DownloadRecord rec)
+            {
+                if (rec.Status == "Completed" && File.Exists(rec.FullPath))
+                {
+                    try { Process.Start(new ProcessStartInfo { FileName = rec.FullPath, UseShellExecute = true }); } catch { }
+                }
+            }
         };
-        _downloadsListView.PreviewMouseDown += DownloadsListView_PreviewMouseDown;
-
-        var statusToVisibilityConverter = new StatusToVisibilityConverter();
-        var statusEqualsConverter = new StatusEqualsConverter();
-        var completedAndExistsConverter = new CompletedAndExistsConverter();
-        var fileExistsConverter = new FileExistsConverter();
-
-        // Create item template
-        var dataTemplate = new DataTemplate();
-        var factory = new FrameworkElementFactory(typeof(Grid));
-
-        // 3 columns: content, spacer, buttons
-        factory.SetValue(Grid.MarginProperty, new Thickness(4));
-        var col0 = new FrameworkElementFactory(typeof(ColumnDefinition));
-        col0.SetValue(ColumnDefinition.WidthProperty, new GridLength(1, GridUnitType.Star));
-        var col1 = new FrameworkElementFactory(typeof(ColumnDefinition));
-        col1.SetValue(ColumnDefinition.WidthProperty, GridLength.Auto);
-        var col2 = new FrameworkElementFactory(typeof(ColumnDefinition));
-        col2.SetValue(ColumnDefinition.WidthProperty, GridLength.Auto);
-        factory.AppendChild(col0);
-        factory.AppendChild(col1);
-        factory.AppendChild(col2);
-
-        // Left content: FileName + Status + ProgressBar
-        var leftStack = new FrameworkElementFactory(typeof(StackPanel));
-        leftStack.SetValue(Grid.ColumnProperty, 0);
-
-        var fileName = new FrameworkElementFactory(typeof(TextBlock));
-        fileName.SetBinding(TextBlock.TextProperty, new Binding("FileName"));
-        fileName.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
-        fileName.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
-        leftStack.AppendChild(fileName);
-
-        var statusText = new FrameworkElementFactory(typeof(TextBlock));
-        statusText.SetBinding(TextBlock.TextProperty, new Binding("Status"));
-        statusText.SetValue(TextBlock.FontSizeProperty, 11.0);
-        statusText.SetValue(TextBlock.ForegroundProperty, SystemColors.GrayTextBrush);
-        leftStack.AppendChild(statusText);
-
-        var progressBar = new FrameworkElementFactory(typeof(ProgressBar));
-        progressBar.SetBinding(ProgressBar.ValueProperty, new Binding("ProgressPercent"));
-        progressBar.SetValue(ProgressBar.HeightProperty, 4.0);
-        progressBar.SetValue(ProgressBar.MarginProperty, new Thickness(0, 4, 0, 0));
-        progressBar.SetBinding(ProgressBar.VisibilityProperty, new Binding("Status")
-        {
-            Converter = statusToVisibilityConverter
-        });
-        leftStack.AppendChild(progressBar);
-
-        factory.AppendChild(leftStack);
-
-        // Right buttons
-        var buttonsStack = new FrameworkElementFactory(typeof(StackPanel));
-        buttonsStack.SetValue(Grid.ColumnProperty, 2);
-        buttonsStack.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
-        buttonsStack.SetValue(StackPanel.MarginProperty, new Thickness(12, 0, 0, 0));
-
-        var openButton = new FrameworkElementFactory(typeof(Button));
-        openButton.SetValue(Button.ContentProperty, "Open");
-        openButton.SetValue(Button.WidthProperty, 60.0);
-        openButton.SetValue(Button.MarginProperty, new Thickness(0, 0, 6, 0));
-        var openEnableBinding = new MultiBinding { Converter = completedAndExistsConverter };
-        openEnableBinding.Bindings.Add(new Binding("Status"));
-        openEnableBinding.Bindings.Add(new Binding("FullPath"));
-        openButton.SetBinding(Button.IsEnabledProperty, openEnableBinding);
-        openButton.AddHandler(Button.ClickEvent, new RoutedEventHandler(OpenDownloadFile_Click));
-        buttonsStack.AppendChild(openButton);
-
-        var showButton = new FrameworkElementFactory(typeof(Button));
-        showButton.SetValue(Button.ContentProperty, "Show in folder");
-        showButton.SetValue(Button.WidthProperty, 100.0);
-        showButton.SetValue(Button.MarginProperty, new Thickness(0, 0, 6, 0));
-        showButton.SetBinding(Button.IsEnabledProperty, new Binding("FullPath")
-        {
-            Converter = fileExistsConverter
-        });
-        showButton.AddHandler(Button.ClickEvent, new RoutedEventHandler(ShowInFolder_Click));
-        buttonsStack.AppendChild(showButton);
-
-        var cancelButton = new FrameworkElementFactory(typeof(Button));
-        cancelButton.SetValue(Button.ContentProperty, "Cancel");
-        cancelButton.SetValue(Button.WidthProperty, 60.0);
-        cancelButton.SetBinding(Button.IsEnabledProperty, new Binding("Status")
-        {
-            Converter = statusEqualsConverter,
-            ConverterParameter = "InProgress"
-        });
-        cancelButton.AddHandler(Button.ClickEvent, new RoutedEventHandler(CancelDownload_Click));
-        buttonsStack.AppendChild(cancelButton);
-
-        factory.AppendChild(buttonsStack);
-
-        dataTemplate.VisualTree = factory;
-        _downloadsListView.ItemTemplate = dataTemplate;
-        _downloadsListView.ItemsSource = _downloadManager.Downloads;
 
         // Context menu
         var contextMenu = new ContextMenu();
@@ -1388,6 +2020,16 @@ public partial class MainWindow : Window
         Grid.SetRow(_downloadsListView, 1);
         grid.Children.Add(_downloadsListView);
 
+        // Populate the list
+        RefreshDownloadsList();
+
+        // Subscribe to collection changes to auto-refresh
+        _downloadManager.Downloads.CollectionChanged += (_, __) =>
+        {
+            if (_downloadsListView != null)
+                RefreshDownloadsList();
+        };
+
         var tabItem = new TabItem
         {
             Header = "Downloads",
@@ -1397,6 +2039,151 @@ public partial class MainWindow : Window
         _downloadsTab = tabItem;
         Tabs.Items.Add(tabItem);
         Tabs.SelectedItem = tabItem;
+    }
+
+    private void RefreshDownloadsList()
+    {
+        if (_downloadsListView == null) return;
+
+        _downloadsListView.Items.Clear();
+
+        foreach (var record in _downloadManager.Downloads)
+        {
+            _downloadsListView.Items.Add(CreateDownloadListItem(record));
+        }
+    }
+
+    private ListViewItem CreateDownloadListItem(DownloadRecord record)
+    {
+        var row = new Grid { Margin = new Thickness(4) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        // Left content: FileName + Status
+        var textStack = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
+
+        var fileNameBlock = new TextBlock
+        {
+            Text = record.FileName,
+            FontWeight = FontWeights.Bold,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        textStack.Children.Add(fileNameBlock);
+
+        var statusBlock = new TextBlock
+        {
+            FontSize = 11,
+            Foreground = SystemColors.GrayTextBrush
+        };
+
+        // Build status text
+        if (record.Status == "InProgress")
+        {
+            var percent = record.ProgressPercent;
+            statusBlock.Text = $"Downloading... {percent}%";
+        }
+        else if (record.Status == "Completed")
+        {
+            statusBlock.Text = "Completed";
+        }
+        else if (record.Status == "Canceled")
+        {
+            statusBlock.Text = "Canceled";
+        }
+        else if (record.Status == "Failed")
+        {
+            statusBlock.Text = "Failed";
+        }
+        else
+        {
+            statusBlock.Text = record.Status;
+        }
+        textStack.Children.Add(statusBlock);
+
+        // Progress bar for in-progress downloads
+        if (record.Status == "InProgress")
+        {
+            var progressBar = new ProgressBar
+            {
+                Value = record.ProgressPercent,
+                Height = 4,
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+            textStack.Children.Add(progressBar);
+        }
+
+        Grid.SetColumn(textStack, 0);
+        row.Children.Add(textStack);
+
+        // Right buttons
+        var buttonsPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var openBtn = new Button
+        {
+            Content = "Open",
+            Width = 60,
+            Margin = new Thickness(0, 0, 6, 0),
+            IsEnabled = record.Status == "Completed" && !string.IsNullOrEmpty(record.FullPath) && File.Exists(record.FullPath),
+            Tag = record
+        };
+        openBtn.Click += (s, e) =>
+        {
+            var rec = (s as Button)?.Tag as DownloadRecord;
+            if (rec != null && rec.Status == "Completed" && File.Exists(rec.FullPath))
+            {
+                try { Process.Start(new ProcessStartInfo { FileName = rec.FullPath, UseShellExecute = true }); } catch { }
+            }
+        };
+        buttonsPanel.Children.Add(openBtn);
+
+        var showBtn = new Button
+        {
+            Content = "Show in folder",
+            Width = 100,
+            Margin = new Thickness(0, 0, 6, 0),
+            IsEnabled = !string.IsNullOrEmpty(record.FullPath) && File.Exists(record.FullPath),
+            Tag = record
+        };
+        showBtn.Click += (s, e) =>
+        {
+            var rec = (s as Button)?.Tag as DownloadRecord;
+            if (rec != null && File.Exists(rec.FullPath))
+            {
+                try { Process.Start("explorer.exe", $"/select,\"{rec.FullPath}\""); } catch { }
+            }
+        };
+        buttonsPanel.Children.Add(showBtn);
+
+        var cancelBtn = new Button
+        {
+            Content = "Cancel",
+            Width = 60,
+            IsEnabled = record.Status == "InProgress",
+            Tag = record
+        };
+        cancelBtn.Click += (s, e) =>
+        {
+            var rec = (s as Button)?.Tag as DownloadRecord;
+            if (rec != null && rec.Status == "InProgress")
+            {
+                _downloadManager.CancelDownload(rec.Id);
+                RefreshDownloadsList();
+            }
+        };
+        buttonsPanel.Children.Add(cancelBtn);
+
+        Grid.SetColumn(buttonsPanel, 1);
+        row.Children.Add(buttonsPanel);
+
+        return new ListViewItem
+        {
+            Content = row,
+            Tag = record
+        };
     }
 
     private void OpenDownloadFile_Click(object sender, RoutedEventArgs e)
@@ -1577,4 +2364,10 @@ internal sealed class BrowserTab
     public string ApiKey { get; set; } = string.Empty;
     public string Model { get; set; } = "gemini-2.5-flash";
     public bool AiVisible { get; set; }
+}
+
+internal sealed class ClosedTabInfo
+{
+    public string Url { get; init; } = string.Empty;
+    public string? Title { get; init; }
 }

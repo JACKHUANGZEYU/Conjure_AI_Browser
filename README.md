@@ -52,7 +52,7 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - Loading indicator (⟳) appears while pages are loading.
   - Favicons are cached per-host to reduce repeated requests.
   - SVG favicons are skipped (WPF doesn't render SVG natively); fallback to /favicon.ico.
-- Tabs: multiple Chromium tabs with close buttons and a `+` new-tab button.
+- Tabs: multiple Chromium tabs with close buttons and a `+` new-tab button (Chrome-style, positioned right next to the last tab).
 - AI panel (per tab, toggle via `AI`):
   - Model picker only; uses the global API key from the Settings tab.
   - Chat-style log with per-tab conversation memory; scrollable log and fixed-height input with send button.

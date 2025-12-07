@@ -39,7 +39,7 @@ public sealed class GeminiAiAssistant : IAiAssistant
         return await GenerateContentAsync(prompt, pageText, ct).ConfigureAwait(false);
     }
 
-    public async Task<string> AnswerAsync(string pageText, string question, CancellationToken ct = default)
+    public async Task<string> AnswerAsync(string pageText, string question, IReadOnlyList<(string Role, string Text)> conversation, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ApiKey))
             return "Gemini API key is missing. Enter it in the AI panel.";
@@ -47,10 +47,24 @@ public sealed class GeminiAiAssistant : IAiAssistant
         if (string.IsNullOrWhiteSpace(question))
             return "Type a question first.";
 
-        if (string.IsNullOrWhiteSpace(pageText))
-            return "No readable page text found.";
+        var history = conversation
+            .TakeLast(12)
+            .Select(m => $"{m.Role}: {m.Text}")
+            .ToArray();
 
-        var prompt = $"Answer this question using only the provided page text. If unsure, say so.\nQuestion: {question}";
+        var historyText = string.Join("\n", history);
+
+        var prompt = $"""
+                      You are an assistant. Respect the conversation so far and use the current page text as your main source.
+                      If the answer is not in the page text, say you are unsure.
+                      
+                      Conversation so far:
+                      {historyText}
+                      
+                      Next user message:
+                      {question}
+                      """;
+
         return await GenerateContentAsync(prompt, pageText, ct).ConfigureAwait(false);
     }
 

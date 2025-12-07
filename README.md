@@ -1,29 +1,29 @@
-# Conjure AI Browser (WPF + Chromium/CEF)
+# Conjure AI Browser (WPF + CEF/Chromium)
 
-Conjure AI Browser is a Windows desktop browser built on WPF with an embedded Chromium engine (CefSharp) and a built-in Gemini assistant.
+Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemini assistant.
 
 ## Project Structure
-- `ConjureBrowser.sln` – solution entry point.
-- `src/ConjureBrowser.App/` – WPF UI (tabs, toolbar, AI panel).
-- `src/ConjureBrowser.Core/` – bookmarks, URL helpers, persistence.
-- `src/ConjureBrowser.AI/` – AI abstractions + Gemini client.
-- `assets/`, `docs/`, `tests/` – assets, documentation, and future tests.
+- `ConjureBrowser.sln` - solution entry.
+- `src/ConjureBrowser.App/` - WPF UI (toolbar, tabs, AI panel, settings tab).
+- `src/ConjureBrowser.Core/` - bookmarks, URL helpers, persistence.
+- `src/ConjureBrowser.AI/` - AI abstractions plus Gemini client.
+- `assets/`, `docs/`, `tests/` - assets, docs, and future tests.
 
 ## Tech Stack
-- UI: WPF (.NET 8, `net8.0-windows`)
-- Engine: CefSharp (`CefSharp.Wpf.NETCore`) for embedded Chromium
-- Runtime: `win-x64`
-- AI: Google Gemini (UI options: `gemini-2.5-flash`, `gemini-3.0-pro`, mapped to API models `gemini-2.5-flash` / `gemini-3.0-pro-preview`)
+- .NET 8 (`net8.0-windows`), WPF
+- Embedded engine: CefSharp (`CefSharp.Wpf.NETCore`) on Chromium
+- Runtime: win-x64
+- AI: Gemini models (`gemini-2.5-flash`, `gemini-3.0-pro` -> API `gemini-3-pro-preview`)
 
 ## Features
 - Navigation: address bar (Enter to go/search), Back/Forward/Reload/Home.
-- Bookmarks: toggle ★/☆, menu, persisted to `%LocalAppData%\ConjureBrowser\bookmarks.json`.
-- Tabs: multiple Chromium tabs with close buttons on each tab and a “+” new-tab button in the tab strip.
-- AI panel (per tab):
-  - Toggleable panel with model selector and API key box.
-  - API key history dropdown (prefills from `GEMINI_API_KEY`; remembers keys you’ve used).
-  - Chat-style UI: scrolling conversation log; fixed-height, scrollable input; send button (➤).
-  - Each tab keeps its own conversation, model, key, and visibility state; uses current page text as context.
+- Bookmarks: toggle star, bookmarks menu; persisted to `%LocalAppData%\ConjureBrowser\bookmarks.json`.
+- Tabs: multiple Chromium tabs with close buttons and a `+` new-tab button.
+- AI panel (per tab, toggle via `AI`):
+  - Model picker only; uses the global API key from the Settings tab.
+  - Chat-style log with per-tab conversation memory; scrollable log and fixed-height input with send button.
+  - Uses current page text as context when answering.
+- Settings tab (gear button): set a global Gemini API key shared across existing and new tabs (only place to enter it).
 
 ## Running
 From repo root:
@@ -32,14 +32,16 @@ dotnet restore
 dotnet build
 dotnet run --project .\src\ConjureBrowser.App
 ```
-Or open `ConjureBrowser.sln` in Visual Studio, set `ConjureBrowser.App` as Startup Project, and F5. If CefSharp complains about natives, set platform to `x64` (Build → Configuration Manager).
+Or open `ConjureBrowser.sln` in Visual Studio, set `ConjureBrowser.App` as Startup Project, and press F5. If CefSharp complains about native binaries, set platform to `x64` (Build -> Configuration Manager).
 
-## Gemini Setup
-- Set `GEMINI_API_KEY` environment variable (recommended) or pick a saved key from the dropdown / paste a new one.
-- Choose a model (`gemini-2.5-flash` or `gemini-3.0-pro`).
-- Type in the chat box and hit send (➤); each tab keeps its own chat history.
+## AI Usage
+1) Open the AI panel (toggle `AI`).
+2) Choose a model (`gemini-2.5-flash` or `gemini-3.0-pro`).
+3) Set a global API key once in the Settings tab (gear). The AI panel will use it automatically.
+4) Type in the input box and press Enter or click send.
+5) Each tab keeps its own chat history; Enter only sends when the chat input is focused and non-empty.
 
-## Next Steps
-- Tab close/reorder polish and session persistence.
-- Stream Gemini responses with better error surfacing.
-- History/downloads UI and settings.
+## Notes / Next Ideas
+- Tab reordering and favicon display.
+- History/downloads UI.
+- Streaming Gemini responses and richer error messages.

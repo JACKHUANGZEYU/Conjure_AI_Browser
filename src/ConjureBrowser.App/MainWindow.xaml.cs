@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -66,6 +67,11 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _sessionSaveDebounce;
     private const int MaxRestoredTabs = 20;
 
+    // Omnibox suggestions
+    private readonly ObservableCollection<OmniboxSuggestion> _omniboxItems = new();
+    private DispatcherTimer? _omniboxDebounceTimer;
+    private bool _suppressOmniboxTextChanged;
+
     private const string HomeUrl = "https://www.google.com";
 
     public MainWindow()
@@ -85,6 +91,17 @@ public partial class MainWindow : Window
             SaveSessionNow();
         };
 
+        // Omnibox debounce timer
+        _omniboxDebounceTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(150)
+        };
+        _omniboxDebounceTimer.Tick += (_, _) =>
+        {
+            _omniboxDebounceTimer.Stop();
+            BuildOmniboxSuggestions();
+        };
+
         InitializeComponent();
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
@@ -96,6 +113,9 @@ public partial class MainWindow : Window
         await _bookmarks.LoadAsync();
         await _history.LoadAsync();
         RenderBookmarksBar();
+
+        // Initialize omnibox suggestions list
+        OmniboxList.ItemsSource = _omniboxItems;
 
         var envKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
         if (!string.IsNullOrWhiteSpace(envKey))
@@ -373,6 +393,267 @@ public partial class MainWindow : Window
         }
     }
 
+    private void AddressBar_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Single-click (when unfocused) selects all; double-click sets caret at the clicked spot without selecting all.
+        if (e.ClickCount >= 2)
+        {
+            if (!AddressBar.IsKeyboardFocusWithin)
+            {
+                AddressBar.Focus();
+            }
+
+            var clickPoint = e.GetPosition(AddressBar);
+            var caretIndex = AddressBar.GetCharacterIndexFromPoint(clickPoint, snapToText: true);
+            AddressBar.CaretIndex = caretIndex >= 0 ? caretIndex : AddressBar.Text.Length;
+            AddressBar.SelectionLength = 0;
+            e.Handled = true;
+            return;
+        }
+
+        if (!AddressBar.IsKeyboardFocusWithin)
+        {
+            AddressBar.Focus();
+            AddressBar.SelectAll();
+            e.Handled = true;
+        }
+    }
+
+    // ---------- Omnibox Suggestions ----------
+
+    private void AddressBar_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressOmniboxTextChanged) return;
+        if (!AddressBar.IsKeyboardFocused)
+        {
+            CloseOmnibox();
+            return;
+        }
+
+        var text = AddressBar.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            CloseOmnibox();
+            return;
+        }
+
+        // Restart debounce timer
+        _omniboxDebounceTimer?.Stop();
+        _omniboxDebounceTimer?.Start();
+    }
+
+    private void AddressBar_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!OmniboxPopup.IsOpen) return;
+
+        switch (e.Key)
+        {
+            case Key.Down:
+                if (OmniboxList.SelectedIndex < _omniboxItems.Count - 1)
+                    OmniboxList.SelectedIndex++;
+                else if (OmniboxList.SelectedIndex == -1 && _omniboxItems.Count > 0)
+                    OmniboxList.SelectedIndex = 0;
+                OmniboxList.ScrollIntoView(OmniboxList.SelectedItem);
+                e.Handled = true;
+                break;
+
+            case Key.Up:
+                if (OmniboxList.SelectedIndex > 0)
+                    OmniboxList.SelectedIndex--;
+                OmniboxList.ScrollIntoView(OmniboxList.SelectedItem);
+                e.Handled = true;
+                break;
+
+            case Key.Enter:
+                if (OmniboxList.SelectedItem is OmniboxSuggestion suggestion)
+                {
+                    NavigateToOmniboxSuggestion(suggestion, openInNewTab: false);
+                }
+                else
+                {
+                    Navigate(AddressBar.Text);
+                }
+                CloseOmnibox();
+                e.Handled = true;
+                break;
+
+            case Key.Escape:
+                CloseOmnibox();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void AddressBar_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        // Delay closing so click on suggestion can register
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!OmniboxList.IsMouseOver && !AddressBar.IsKeyboardFocused)
+            {
+                CloseOmnibox();
+            }
+        }), DispatcherPriority.Input);
+    }
+
+    private void OmniboxList_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (OmniboxList.SelectedItem is OmniboxSuggestion suggestion)
+        {
+            NavigateToOmniboxSuggestion(suggestion, openInNewTab: false);
+            CloseOmnibox();
+        }
+    }
+
+    private void OmniboxList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // Check for middle-click or Ctrl+left-click to open in new tab
+        var ctrlPressed = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+        var isMiddleClick = e.MiddleButton == MouseButtonState.Pressed;
+
+        if (isMiddleClick || (ctrlPressed && e.LeftButton == MouseButtonState.Pressed))
+        {
+            // Find the clicked item
+            var element = e.OriginalSource as FrameworkElement;
+            while (element != null && !(element is ListBoxItem))
+            {
+                element = VisualTreeHelper.GetParent(element) as FrameworkElement;
+            }
+
+            if (element is ListBoxItem listBoxItem && listBoxItem.Content is OmniboxSuggestion suggestion)
+            {
+                NavigateToOmniboxSuggestion(suggestion, openInNewTab: true);
+                CloseOmnibox();
+                e.Handled = true;
+            }
+        }
+    }
+
+    private void BuildOmniboxSuggestions()
+    {
+        var query = AddressBar.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            CloseOmnibox();
+            return;
+        }
+
+        var suggestions = new List<OmniboxSuggestion>();
+        var seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // 1) Bookmark matches (higher priority)
+        var bookmarkMatches = _bookmarks.Items
+            .Where(b => b.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                        b.Url.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Take(3);
+
+        foreach (var b in bookmarkMatches)
+        {
+            if (seenUrls.Add(b.Url))
+            {
+                suggestions.Add(new OmniboxSuggestion
+                {
+                    Type = OmniboxSuggestionType.Bookmark,
+                    PrimaryText = b.Title,
+                    SecondaryText = b.Url,
+                    NavigateTarget = b.Url
+                });
+            }
+        }
+
+        // 2) History matches
+        var historyMatches = _history.Items
+            .Where(h => h.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                        h.Url.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Take(5);
+
+        foreach (var h in historyMatches)
+        {
+            if (seenUrls.Add(h.Url))
+            {
+                suggestions.Add(new OmniboxSuggestion
+                {
+                    Type = OmniboxSuggestionType.History,
+                    PrimaryText = h.Title,
+                    SecondaryText = h.Url,
+                    NavigateTarget = h.Url
+                });
+            }
+        }
+
+        // 3) URL suggestion if query looks like a URL/domain
+        var normalizedUrl = UrlHelpers.NormalizeUrl(query);
+        var looksLikeUrl = normalizedUrl != null ||
+                          (query.Contains('.') && !query.Contains(' '));
+
+        if (looksLikeUrl)
+        {
+            var targetUrl = normalizedUrl ?? $"https://{query}";
+            if (seenUrls.Add(targetUrl))
+            {
+                suggestions.Add(new OmniboxSuggestion
+                {
+                    Type = OmniboxSuggestionType.Url,
+                    PrimaryText = $"Go to {query}",
+                    SecondaryText = targetUrl,
+                    NavigateTarget = targetUrl
+                });
+            }
+        }
+
+        // 4) Search suggestion (always)
+        var searchUrl = $"https://www.google.com/search?q={Uri.EscapeDataString(query)}";
+        suggestions.Add(new OmniboxSuggestion
+        {
+            Type = OmniboxSuggestionType.Search,
+            PrimaryText = $"Search Google for \"{query}\"",
+            SecondaryText = "google.com",
+            NavigateTarget = searchUrl
+        });
+
+        // Limit total suggestions
+        var finalSuggestions = suggestions.Take(8).ToList();
+
+        // Update observable collection
+        _omniboxItems.Clear();
+        foreach (var s in finalSuggestions)
+        {
+            _omniboxItems.Add(s);
+        }
+
+        // Show/hide popup
+        if (_omniboxItems.Count > 0)
+        {
+            OmniboxPopup.IsOpen = true;
+        }
+        else
+        {
+            OmniboxPopup.IsOpen = false;
+        }
+    }
+
+    private void NavigateToOmniboxSuggestion(OmniboxSuggestion suggestion, bool openInNewTab)
+    {
+        if (openInNewTab)
+        {
+            AddNewTab(suggestion.NavigateTarget, activate: true);
+        }
+        else
+        {
+            _suppressOmniboxTextChanged = true;
+            AddressBar.Text = suggestion.NavigateTarget;
+            _suppressOmniboxTextChanged = false;
+            Navigate(suggestion.NavigateTarget);
+        }
+    }
+
+    private void CloseOmnibox()
+    {
+        OmniboxPopup.IsOpen = false;
+        OmniboxList.SelectedIndex = -1;
+        _omniboxItems.Clear();
+    }
+
     private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (Tabs.SelectedItem is not TabItem tabItem) return;
@@ -520,6 +801,12 @@ public partial class MainWindow : Window
 
         // Set download handler
         browser.DownloadHandler = _downloadManager;
+
+        // Set popup handler to open target="_blank" / window.open in new tabs
+        browser.LifeSpanHandler = new PopupLifeSpanHandler(
+            Dispatcher,
+            (url, activate) => AddNewTab(url, activate)
+        );
 
         // Set find handler
         _findManager.Attach(browser);

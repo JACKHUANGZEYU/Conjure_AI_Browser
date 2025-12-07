@@ -80,7 +80,11 @@
                          Name="AddressBar"
                          Margin="0,0,6,0"
                          VerticalContentAlignment="Center"
-                         KeyDown="AddressBar_KeyDown" />
+                         KeyDown="AddressBar_KeyDown"
+                         PreviewMouseLeftButtonDown="AddressBar_PreviewMouseLeftButtonDown"
+                         TextChanged="AddressBar_TextChanged"
+                         LostKeyboardFocus="AddressBar_LostKeyboardFocus"
+                         PreviewKeyDown="AddressBar_PreviewKeyDown" />
 
                 <Button Grid.Column="5" Width="64" Margin="0,0,6,0" Content="Go" Click="Go_Click" />
 
@@ -167,6 +171,52 @@
                 </Button>
             </Grid>
         </Border>
+
+        <!-- Omnibox Suggestions Popup -->
+        <Popup x:Name="OmniboxPopup"
+               PlacementTarget="{Binding ElementName=AddressBar}"
+               Placement="Bottom"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PopupAnimation="Fade">
+            <Border Background="White"
+                    BorderBrush="#DDD"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="2">
+                <ListBox x:Name="OmniboxList"
+                         MaxHeight="280"
+                         Width="{Binding ActualWidth, ElementName=AddressBar}"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         MouseLeftButtonUp="OmniboxList_MouseLeftButtonUp"
+                         PreviewMouseDown="OmniboxList_PreviewMouseDown"
+                         BorderThickness="0"
+                         Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="8,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding IconText}"
+                                           VerticalAlignment="Center"
+                                           FontSize="14"/>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding PrimaryText}"
+                                               FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding SecondaryText}"
+                                               Foreground="Gray"
+                                               FontSize="11"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+        </Popup>
 
         <!-- Bookmarks Bar -->
         <Border DockPanel.Dock="Top"

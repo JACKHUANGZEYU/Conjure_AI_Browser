@@ -25,6 +25,12 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
 
 ## Features
 - Navigation: address bar (Enter to go/search), Back/Forward/Reload/Home.
+- **Omnibox Suggestions**: Chrome-style autocomplete dropdown as you type in the address bar.
+  - Shows suggestions from bookmarks (★), history (⏱), URL detection (🌐), and Google search (🔍).
+  - Keyboard navigation: Up/Down arrows to select, Enter to navigate, Escape to close.
+  - Click to navigate in current tab; Ctrl+click or middle-click to open in a new tab.
+  - Dropdown stays the same width as the address bar, closes on blur, and appears after a brief typing pause (150ms debounce).
+  - Mouse: single-click (when unfocused) selects the full address; double-click sets the caret where you click.
 - Bookmarks:
   - **Bookmarks Bar**: Horizontal bar below the address bar displays all bookmarks as clickable buttons.
     - Left-click to navigate in current tab; Ctrl+click or middle-click to open in new tab.
@@ -53,6 +59,11 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - Favicons are cached per-host to reduce repeated requests.
   - SVG favicons are skipped (WPF doesn't render SVG natively); fallback to /favicon.ico.
 - Tabs: multiple Chromium tabs with close buttons and a `+` new-tab button (Chrome-style, positioned right next to the last tab).
+- **Popup Handling**: Links that open new windows/tabs (`target="_blank"`, `window.open()`, OAuth flows) now open inside Conjure as new tabs.
+  - User-initiated popups open in a new foreground tab (activated).
+  - Background tab requests (`window.open` with `_blank` disposition) open without stealing focus.
+  - Silent popups (no user gesture, e.g., pop-unders, ad scripts) are automatically blocked.
+  - External schemes (`mailto:`, `tel:`) are passed to the system's default handler.
 - AI panel (per tab, toggle via `AI`):
   - Model picker only; uses the global API key from the Settings tab.
   - Chat-style log with per-tab conversation memory; scrollable log and fixed-height input with send button.
@@ -91,6 +102,11 @@ Chrome-style keyboard shortcuts work across web tabs and internal tabs (History/
 |----------|--------|
 | Ctrl+L | Focus address bar and select all |
 | Ctrl+K | Focus address bar and select all |
+| Up/Down | Select suggestion (when omnibox is open) |
+| Enter | Navigate to selected suggestion or typed URL |
+| Escape | Close omnibox suggestions |
+
+Mouse: single-click on an unfocused address bar selects all text; double-click just sets the caret without selecting everything.
 
 ### Tabs
 | Shortcut | Action |

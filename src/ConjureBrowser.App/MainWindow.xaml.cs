@@ -22,9 +22,9 @@ public partial class MainWindow : Window
     private readonly HttpClient _httpClient = new();
     private readonly GeminiAiAssistant _ai;
 
+    private readonly List<BrowserTab> _tabs = new();
+    private readonly List<string> _apiKeyHistory = new();
     private BrowserTab? _activeTab;
-
-    private readonly List<(string Role, string Text)> _conversation = new();
 
     private const string HomeUrl = "https://www.google.com";
 
@@ -39,15 +39,19 @@ public partial class MainWindow : Window
     {
         await _bookmarks.LoadAsync();
 
-        // Pre-fill API key from environment variable if present.
         var envKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
         if (!string.IsNullOrWhiteSpace(envKey))
-            ApiKeyBox.Password = envKey.Trim();
+        {
+            AddApiKeyToHistory(envKey.Trim());
+            ApiKeyBox.Text = envKey.Trim();
+        }
 
         Tabs.Items.Clear();
         AddNewTab(HomeUrl);
         UpdateAiPanelVisibility();
     }
+
+    // ---------- Navigation and tabs ----------
 
     private void AttachBrowserEvents(BrowserTab tab)
     {
@@ -61,7 +65,8 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             if (_activeTab is null) return;
-            _activeTab.Header.Text = _activeTab.Browser.Title ?? "New Tab";
+            _activeTab.Title = _activeTab.Browser.Title ?? "New Tab";
+            _activeTab.TabItem.Header = _activeTab.Title;
             Title = string.IsNullOrWhiteSpace(_activeTab.Browser.Title)
                 ? "Conjure Browser"
                 : $"{_activeTab.Browser.Title} - Conjure Browser";
@@ -80,7 +85,6 @@ public partial class MainWindow : Window
 
     private void Browser_LoadingStateChanged(object? sender, LoadingStateChangedEventArgs e)
     {
-        // CefSharp fires off UI thread.
         Dispatcher.Invoke(() =>
         {
             BackButton.IsEnabled = e.CanGoBack;
@@ -94,8 +98,6 @@ public partial class MainWindow : Window
         if (_activeTab is null) return;
 
         var normalized = UrlHelpers.NormalizeUrl(rawInput);
-
-        // If the input is not a URL, treat it as a search query.
         if (normalized == null)
         {
             if (string.IsNullOrWhiteSpace(rawInput)) return;
@@ -155,6 +157,74 @@ public partial class MainWindow : Window
             e.Handled = true;
         }
     }
+
+    private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (Tabs.SelectedItem is TabItem tabItem && tabItem.Tag is BrowserTab tab)
+        {
+            _activeTab = tab;
+            AddressBar.Text = tab.Browser.Address ?? string.Empty;
+            UpdateBookmarkUiAsync().ConfigureAwait(false);
+            SyncUiToActiveTab();
+        }
+    }
+
+    private void NewTab_Click(object sender, RoutedEventArgs e) => AddNewTab(HomeUrl);
+
+    private void CloseTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is BrowserTab tab)
+        {
+            Tabs.Items.Remove(tab.TabItem);
+            _tabs.Remove(tab);
+
+            if (Tabs.Items.Count == 0)
+            {
+                AddNewTab(HomeUrl);
+                return;
+            }
+
+            Tabs.SelectedIndex = Math.Max(0, Tabs.Items.Count - 1);
+        }
+    }
+
+    private void AddNewTab(string? initialUrl = null)
+    {
+        var browser = new ChromiumWebBrowser
+        {
+            Address = initialUrl ?? HomeUrl
+        };
+
+        var tabItem = new TabItem
+        {
+            Header = "New Tab",
+            Content = browser
+        };
+
+        var tab = new BrowserTab
+        {
+            Browser = browser,
+            TabItem = tabItem,
+            Title = "New Tab",
+            Model = GetSelectedModel(),
+            ApiKey = ApiKeyBox.Text ?? string.Empty,
+            AiVisible = false
+        };
+
+        tabItem.Tag = tab;
+        tabItem.DataContext = tab;
+        AttachBrowserEvents(tab);
+
+        Tabs.Items.Add(tabItem);
+        _tabs.Add(tab);
+        Tabs.SelectedItem = tabItem;
+        _activeTab = tab;
+
+        UpdateAiPanelVisibility();
+        SyncUiToActiveTab();
+    }
+
+    // ---------- Bookmarks ----------
 
     private async void BookmarkButton_Click(object sender, RoutedEventArgs e)
     {
@@ -220,7 +290,11 @@ public partial class MainWindow : Window
 
     private void UpdateAiPanelVisibility()
     {
+        var tab = _activeTab;
+        if (tab is null) return;
+
         var show = AiPanelToggle.IsChecked == true;
+        tab.AiVisible = show;
         AiColumn.Width = show ? new GridLength(360) : new GridLength(0);
     }
 
@@ -235,25 +309,28 @@ public partial class MainWindow : Window
 
     private async void AiAsk_Click(object? sender, RoutedEventArgs e)
     {
+        var tab = _activeTab;
+        if (tab is null) return;
+
         ApplyAiSettingsFromUi();
 
         var question = AiInput.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(question))
         {
-            AppendMessage("system", "Type something, then press send.");
+            AppendMessage(tab, "system", "Type something, then press send.");
             return;
         }
 
-        AppendMessage("user", question);
+        AppendMessage(tab, "user", question);
         AiInput.Clear();
 
         var pageText = await GetPageInnerTextAsync();
-        AppendMessage("assistant", "Thinking...");
+        AppendMessage(tab, "assistant", "Thinking...");
 
         var answer = await _ai.AnswerAsync(pageText, question);
 
-        ReplaceLastAssistantMessage(answer);
-        RenderConversation();
+        ReplaceLastAssistantMessage(tab, answer);
+        RenderConversation(tab);
     }
 
     private async Task<string> GetPageInnerTextAsync()
@@ -273,15 +350,23 @@ public partial class MainWindow : Window
 
     private void ApplyAiSettingsFromUi()
     {
-        _ai.ApiKey = ApiKeyBox.Password?.Trim() ?? string.Empty;
-        _ai.Model = GetSelectedModel();
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        tab.ApiKey = ApiKeyBox.Text?.Trim() ?? string.Empty;
+        tab.Model = GetSelectedModel();
+
+        _ai.ApiKey = tab.ApiKey;
+        _ai.Model = tab.Model;
+
+        if (!string.IsNullOrWhiteSpace(tab.ApiKey))
+            AddApiKeyToHistory(tab.ApiKey);
     }
 
     private string GetSelectedModel()
     {
         if (ModelSelector.SelectedItem is ComboBoxItem item)
         {
-            // Prefer Tag (actual API model); fall back to Content label.
             if (item.Tag is string tag && !string.IsNullOrWhiteSpace(tag))
                 return tag.Trim();
             if (item.Content is string content && !string.IsNullOrWhiteSpace(content))
@@ -291,91 +376,85 @@ public partial class MainWindow : Window
         return "gemini-2.5-flash";
     }
 
-    // ---------- Tabs ----------
-
-    private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void SyncUiToActiveTab()
     {
-        if (Tabs.SelectedItem is TabItem tabItem && tabItem.Tag is BrowserTab tab)
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        for (int i = 0; i < ModelSelector.Items.Count; i++)
         {
-            _activeTab = tab;
-            AddressBar.Text = tab.Browser.Address ?? string.Empty;
-            UpdateBookmarkUiAsync().ConfigureAwait(false);
+            if (ModelSelector.Items[i] is ComboBoxItem item)
+            {
+                var tag = item.Tag as string;
+                var content = item.Content as string;
+                if (string.Equals(tag, tab.Model, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(content, tab.Model, StringComparison.OrdinalIgnoreCase))
+                {
+                    ModelSelector.SelectedIndex = i;
+                    break;
+                }
+            }
         }
-    }
 
-    private void NewTab_Click(object sender, RoutedEventArgs e)
-    {
-        AddNewTab(HomeUrl);
-    }
+        ApiKeyBox.Text = tab.ApiKey;
+        AiInput.Text = string.Empty;
 
-    private void AddNewTab(string? initialUrl = null)
-    {
-        var browser = new ChromiumWebBrowser
-        {
-            Address = initialUrl ?? HomeUrl
-        };
+        AiPanelToggle.IsChecked = tab.AiVisible;
+        AiColumn.Width = tab.AiVisible ? new GridLength(360) : new GridLength(0);
 
-        var header = new TextBlock
-        {
-            Text = "New Tab",
-            Margin = new Thickness(6, 0, 6, 0)
-        };
-
-        var tabItem = new TabItem
-        {
-            Header = header,
-            Content = browser
-        };
-
-        var tab = new BrowserTab
-        {
-            Browser = browser,
-            Header = header,
-            TabItem = tabItem
-        };
-
-        tabItem.Tag = tab;
-        AttachBrowserEvents(tab);
-
-        Tabs.Items.Add(tabItem);
-        Tabs.SelectedItem = tabItem;
-        _activeTab = tab;
+        RenderConversation(tab);
     }
 
     // ---------- Conversation helpers ----------
 
-    private void AppendMessage(string role, string text)
+    private void AppendMessage(BrowserTab tab, string role, string text)
     {
-        _conversation.Add((role, text));
-        RenderConversation();
+        tab.Conversation.Add((role, text));
+        RenderConversation(tab);
     }
 
-    private void ReplaceLastAssistantMessage(string text)
+    private void ReplaceLastAssistantMessage(BrowserTab tab, string text)
     {
-        for (var i = _conversation.Count - 1; i >= 0; i--)
+        for (var i = tab.Conversation.Count - 1; i >= 0; i--)
         {
-            if (_conversation[i].Role == "assistant")
+            if (tab.Conversation[i].Role == "assistant")
             {
-                _conversation[i] = ("assistant", text);
-                RenderConversation();
+                tab.Conversation[i] = ("assistant", text);
+                RenderConversation(tab);
                 return;
             }
         }
 
-        // If no assistant message found, append instead.
-        AppendMessage("assistant", text);
+        AppendMessage(tab, "assistant", text);
     }
 
-    private void RenderConversation()
+    private void RenderConversation(BrowserTab tab)
     {
-        var lines = _conversation.Select(m => $"{m.Role}: {m.Text}");
+        var lines = tab.Conversation.Select(m => $"{m.Role}: {m.Text}");
         AiConversation.Text = string.Join("\n\n", lines);
+    }
+
+    // ---------- API key history ----------
+
+    private void AddApiKeyToHistory(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return;
+        if (_apiKeyHistory.Contains(key)) return;
+
+        _apiKeyHistory.Add(key);
+        ApiKeyBox.Items.Clear();
+        foreach (var k in _apiKeyHistory)
+            ApiKeyBox.Items.Add(k);
     }
 }
 
 internal sealed class BrowserTab
 {
     public ChromiumWebBrowser Browser { get; init; } = null!;
-    public TextBlock Header { get; init; } = null!;
     public TabItem TabItem { get; init; } = null!;
+    public string Title { get; set; } = "New Tab";
+    public List<(string Role, string Text)> Conversation { get; } = new();
+    public string ApiKey { get; set; } = string.Empty;
+    public string Model { get; set; } = "gemini-2.5-flash";
+    public bool AiVisible { get; set; }
 }

@@ -350,7 +350,16 @@ public partial class MainWindow : Window
             normalized = $"https://www.google.com/search?q={q}";
         }
 
+        // Suppress omnibox reopening when address changes
+        _suppressOmniboxTextChanged = true;
+        CloseOmnibox();
+        
         _activeTab.Browser.Address = normalized;
+        
+        // Move focus to browser so address bar text changes don't reopen omnibox
+        _activeTab.Browser.Focus();
+        
+        _suppressOmniboxTextChanged = false;
     }
 
     private async Task UpdateBookmarkUiAsync()
@@ -398,6 +407,7 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Enter)
         {
+            // CloseOmnibox is called inside Navigate
             Navigate(AddressBar.Text);
             e.Handled = true;
         }
@@ -1455,19 +1465,7 @@ public partial class MainWindow : Window
             }
         }
 
-        // Sync Context Mode selector
-        for (int i = 0; i < ContextModeSelector.Items.Count; i++)
-        {
-            if (ContextModeSelector.Items[i] is ComboBoxItem item)
-            {
-                var tag = item.Tag as string;
-                if (string.Equals(tag, tab.ContextMode, StringComparison.OrdinalIgnoreCase))
-                {
-                    ContextModeSelector.SelectedIndex = i;
-                    break;
-                }
-            }
-        }
+
 
         // Sync Selection preview
         UpdateSelectionPreview(tab);
@@ -1533,16 +1531,7 @@ public partial class MainWindow : Window
 
     // ---------- Quick Actions ----------
 
-    private void ContextModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        var tab = _activeTab;
-        if (tab is null) return;
 
-        if (ContextModeSelector.SelectedItem is ComboBoxItem item && item.Tag is string mode)
-        {
-            tab.ContextMode = mode;
-        }
-    }
 
     private async void SummarizePage_Click(object sender, RoutedEventArgs e)
     {
@@ -2304,6 +2293,40 @@ public partial class MainWindow : Window
             AppMenuButton.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
             AppMenuButton.ContextMenu.IsOpen = true;
         }
+    }
+
+    // ---------- AI Tools Menu ----------
+
+    private void AiToolsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (AiToolsButton.ContextMenu != null)
+        {
+            // Update checkmarks based on current tab's context mode
+            var tab = _activeTab;
+            var mode = tab?.ContextMode ?? "Auto";
+            ContextAutoMenuItem.IsChecked = mode == "Auto";
+            ContextPageMenuItem.IsChecked = mode == "Page";
+            ContextGeneralMenuItem.IsChecked = mode == "General";
+
+            AiToolsButton.ContextMenu.PlacementTarget = AiToolsButton;
+            AiToolsButton.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            AiToolsButton.ContextMenu.IsOpen = true;
+        }
+    }
+
+    private void ContextMode_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem menuItem) return;
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        var mode = menuItem.Tag as string ?? "Auto";
+        tab.ContextMode = mode;
+
+        // Update checkmarks (radio-button style - only one checked at a time)
+        ContextAutoMenuItem.IsChecked = mode == "Auto";
+        ContextPageMenuItem.IsChecked = mode == "Page";
+        ContextGeneralMenuItem.IsChecked = mode == "General";
     }
 
     private void AppMenu_Opened(object sender, RoutedEventArgs e)

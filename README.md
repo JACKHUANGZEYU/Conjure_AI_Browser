@@ -33,6 +33,7 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
 - **Omnibox Suggestions**: Chrome-style autocomplete dropdown as you type in the address bar.
   - Shows suggestions from bookmarks (★), history (⏱), URL detection (🌐), and **live Google Autocomplete** (🔍).
   - Live search suggestions are fetched from Google's public Suggest API as you type.
+  - **Auto-closes on Enter** — the dropdown disappears after you press Enter to navigate/search.
   - Keyboard navigation: Up/Down arrows to select, Enter to navigate, Escape to close.
   - Click to navigate in current tab; Ctrl+click or middle-click to open in a new tab.
   - Dropdown stays the same width as the address bar, closes on blur, and appears after a brief typing pause (150ms debounce).
@@ -70,22 +71,22 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - Background tab requests (`window.open` with `_blank` disposition) open without stealing focus.
   - Silent popups (no user gesture, e.g., pop-unders, ad scripts) are automatically blocked.
   - External schemes (`mailto:`, `tel:`) are passed to the system's default handler.
-- **AI Assistant Panel** (per tab, toggle via `AI` button):
-  - **Context Modes**: Control how the AI uses page content:
-    - `Auto` (default): AI uses page context when relevant, answers generally otherwise
-    - `Page only`: AI strictly uses only page content; says "not found on page" for unrelated questions
-    - `General`: AI ignores page content entirely, answers from general knowledge
-  - **Quick Actions** (one-click AI features):
-    - `📄 Summarize`: Summarize the current page in bullet points
-    - `📌 Key Points`: Extract 5-8 key points from the page
-    - `💡 Explain Selection`: Highlight text on the page, then click to get an explanation
-    - `⚖ Compare Tabs`: Select 2+ tabs and generate a comparison table
-    - `🗑 Clear`: Clear the conversation and stored selection
-  - **Selection Preview**: Shows captured text from the page; click ✕ to clear
-  - Model picker (`gemini-2.5-flash` or `gemini-3.0-pro`); uses the global API key from Settings
+- **AI Assistant Panel** (per tab, toggle via `AI` button in toolbar):
+  - Model picker (`gemini-2.5-flash` or `gemini-3.0-pro`) in the panel; uses the global API key from Settings
   - Chat-style log with per-tab conversation memory; scrollable log and fixed-height input
   - Uses current page text AND visual content (screenshots) as context when answering
   - Can analyze images, maps, charts, and other visual elements on the page
+- **AI Tools Menu** (🛠 button in toolbar, next to AI button):
+  - **Context Modes**: Control how the AI uses page content:
+    - `Auto` (default): AI uses page context when relevant, answers generally otherwise
+    - `Page only`: AI strictly uses only page content
+    - `General`: AI ignores page entirely, answers from general knowledge
+  - **Quick Actions** (one-click AI features):
+    - `📄 Summarize Page`: Summarize the current page
+    - `📌 Key Points`: Extract key points from the page
+    - `💡 Explain Selection`: Explain highlighted text on the page
+    - `⚖ Compare Tabs`: Select 2+ tabs and generate a comparison
+    - `🗑 Clear Chat`: Clear the conversation and selection
 - **Find in Page**: Chrome-style find overlay for searching within web pages.
   - Open with Ctrl+F; type to search with incremental highlighting.
   - Enter for next match, Shift+Enter for previous match.

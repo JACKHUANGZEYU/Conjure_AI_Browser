@@ -1,0 +1,69 @@
+<Window x:Class="ConjureBrowser.App.Dialogs.CompareTabsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Compare Tabs"
+        Width="480"
+        Height="420"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="Compare Tabs" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Text="Select 2 or more tabs to compare their content."
+                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                       Margin="0,4,0,0" />
+        </StackPanel>
+
+        <!-- Tab list with checkboxes -->
+        <Border Grid.Row="1" 
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                BorderThickness="1"
+                Margin="0,0,0,12">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Name="TabCheckboxList" />
+            </ScrollViewer>
+        </Border>
+
+        <!-- Compare question -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,12">
+            <TextBlock Text="Comparison prompt (optional):" Margin="0,0,0,4" />
+            <TextBox Name="CompareQuestionTextBox"
+                     Height="60"
+                     TextWrapping="Wrap"
+                     AcceptsReturn="True"
+                     VerticalScrollBarVisibility="Auto"
+                     Text="Compare these sources. Create a markdown table showing key differences. Then list which source is best for different use cases." />
+        </StackPanel>
+
+        <!-- Selection count -->
+        <TextBlock Grid.Row="3" 
+                   Name="SelectionCountText"
+                   Text="0 tabs selected"
+                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                   Margin="0,0,0,12" />
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Name="CompareButton" 
+                    Content="Compare" 
+                    Width="90" 
+                    Margin="0,0,8,0" 
+                    IsEnabled="False"
+                    Click="CompareButton_Click" />
+            <Button Name="CancelButton" 
+                    Content="Cancel" 
+                    Width="90"
+                    IsCancel="True"
+                    Click="CancelButton_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

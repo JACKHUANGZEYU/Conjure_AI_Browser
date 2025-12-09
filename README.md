@@ -69,11 +69,22 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - Background tab requests (`window.open` with `_blank` disposition) open without stealing focus.
   - Silent popups (no user gesture, e.g., pop-unders, ad scripts) are automatically blocked.
   - External schemes (`mailto:`, `tel:`) are passed to the system's default handler.
-- AI panel (per tab, toggle via `AI`):
-  - Model picker only; uses the global API key from the Settings tab.
-  - Chat-style log with per-tab conversation memory; scrollable log and fixed-height input with send button.
-  - Uses current page text AND visual content (screenshots) as context when answering.
-  - Can analyze images, maps, charts, and other visual elements on the page.
+- **AI Assistant Panel** (per tab, toggle via `AI` button):
+  - **Context Modes**: Control how the AI uses page content:
+    - `Auto` (default): AI uses page context when relevant, answers generally otherwise
+    - `Page only`: AI strictly uses only page content; says "not found on page" for unrelated questions
+    - `General`: AI ignores page content entirely, answers from general knowledge
+  - **Quick Actions** (one-click AI features):
+    - `📄 Summarize`: Summarize the current page in bullet points
+    - `📌 Key Points`: Extract 5-8 key points from the page
+    - `💡 Explain Selection`: Highlight text on the page, then click to get an explanation
+    - `⚖ Compare Tabs`: Select 2+ tabs and generate a comparison table
+    - `🗑 Clear`: Clear the conversation and stored selection
+  - **Selection Preview**: Shows captured text from the page; click ✕ to clear
+  - Model picker (`gemini-2.5-flash` or `gemini-3.0-pro`); uses the global API key from Settings
+  - Chat-style log with per-tab conversation memory; scrollable log and fixed-height input
+  - Uses current page text AND visual content (screenshots) as context when answering
+  - Can analyze images, maps, charts, and other visual elements on the page
 - **Find in Page**: Chrome-style find overlay for searching within web pages.
   - Open with Ctrl+F; type to search with incremental highlighting.
   - Enter for next match, Shift+Enter for previous match.
@@ -225,12 +236,50 @@ dotnet run --project .\src\ConjureBrowser.App
 Or open `ConjureBrowser.sln` in Visual Studio, set `ConjureBrowser.App` as Startup Project, and press F5. If CefSharp complains about native binaries, set platform to `x64` (Build -> Configuration Manager).
 
 ## AI Usage
-1) Open the AI panel (toggle `AI`).
+1) Open the AI panel (toggle `AI` button in toolbar).
 2) Choose a model (`gemini-2.5-flash` or `gemini-3.0-pro`).
-3) Set a global API key once in the Settings tab (gear). The AI panel will use it automatically.
+3) Set a global API key once in the Settings tab (via ⋮ menu). The AI panel will use it automatically.
 4) Type in the input box and press Enter or click send.
 5) Each tab keeps its own chat history; Enter only sends when the chat input is focused and non-empty.
 6) The AI automatically captures screenshots to analyze visual content (images, maps, charts). Ask questions about what you see on the page!
+
+### Context Modes
+Use the "Context" dropdown to control how the AI uses page content:
+- **Auto** (default): The AI uses page context when your question is related to the page, but answers from general knowledge for unrelated questions. Best for normal browsing.
+- **Page only**: The AI strictly uses only the page content. If your question can't be answered from the page, it will say so. Best for analyzing specific pages.
+- **General**: The AI completely ignores the page and answers from general knowledge only. Best for when you want ChatGPT-style answers without page context.
+
+### Quick Actions
+One-click AI features in the panel:
+- **📄 Summarize**: Get a bullet-point summary of the current page.
+- **📌 Key Points**: Extract 5-8 key points from the page content.
+- **💡 Explain Selection**: First highlight text on the page, then click this to get an explanation. The selected text appears in the "Selection" preview chip.
+- **⚖ Compare Tabs**: Opens a dialog to select 2+ web tabs. The AI generates a comparison table and analysis.
+- **🗑 Clear**: Clears the conversation history and stored selection for the current tab.
+
+### Selection Workflow
+1. Navigate to a web page.
+2. Highlight any text on the page (click and drag).
+3. Click "💡 Explain Selection" in the AI panel.
+4. The AI will explain the selected text, showing it in the Selection preview.
+5. You can ask follow-up questions about the selection.
+6. Click ✕ on the Selection chip to clear it.
+
+### Compare Tabs Workflow
+1. Open 2 or more web pages in separate tabs (e.g., two product pages, two articles).
+2. Click "⚖ Compare Tabs" in the AI panel.
+3. In the dialog, check the tabs you want to compare.
+4. Optionally edit the comparison prompt.
+5. Click "Compare" to generate a comparison table and analysis.
+
+**Manual test checklist (AI Features)**
+1. Open a Wikipedia page → click `Summarize` → summary appears in bullets.
+2. Highlight a paragraph → click `Explain Selection` → explanation appears + selection chip shows.
+3. Open 2 product pages in 2 tabs → `Compare Tabs` → output includes comparison table.
+4. Switch Context to `General` → ask "What is photosynthesis?" → should answer normally.
+5. Switch Context to `Page only` → ask "What is photosynthesis?" on a random non-bio page → should say not found on page.
+6. Click `Clear` → conversation clears, selection chip clears.
+7. Switch tabs → context mode and selection preview update to match that tab's state.
 
 ## Notes / Next Ideas
 - Tab reordering and favicon display.

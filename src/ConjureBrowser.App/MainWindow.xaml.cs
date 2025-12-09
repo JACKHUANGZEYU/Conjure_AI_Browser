@@ -1255,15 +1255,32 @@ public partial class MainWindow : Window
         var pageText = await GetPageInnerTextAsync(tab);
         var screenshot = await CaptureScreenshotAsync(tab);
         
+        // Build context wrapper with mode and selected text
+        var contextWrapper = BuildContextWrapper(tab, pageText);
+        
         AppendMessage(tab, "assistant", "Thinking...");
         RenderConversation(tab);
 
         _ai.ApiKey = string.IsNullOrWhiteSpace(tab.ApiKey) ? _globalApiKey : tab.ApiKey;
         _ai.Model = tab.Model;
 
-        var answer = await _ai.AnswerAsync(pageText, question, tab.Conversation, screenshot);
+        var answer = await _ai.AnswerAsync(contextWrapper, question, tab.Conversation, screenshot);
         ReplaceLastAssistantMessage(tab, answer);
         RenderConversation(tab);
+    }
+
+    private string BuildContextWrapper(BrowserTab tab, string pageText)
+    {
+        var mode = tab.ContextMode ?? "Auto";
+        var selectedText = tab.SelectedText ?? string.Empty;
+
+        return $"""
+            CONTEXT_MODE: {mode}
+            SELECTED_TEXT:
+            {selectedText}
+            PAGE_TEXT:
+            {pageText}
+            """;
     }
 
     private async Task<string> GetPageInnerTextAsync(BrowserTab tab)
@@ -1363,6 +1380,23 @@ public partial class MainWindow : Window
             }
         }
 
+        // Sync Context Mode selector
+        for (int i = 0; i < ContextModeSelector.Items.Count; i++)
+        {
+            if (ContextModeSelector.Items[i] is ComboBoxItem item)
+            {
+                var tag = item.Tag as string;
+                if (string.Equals(tag, tab.ContextMode, StringComparison.OrdinalIgnoreCase))
+                {
+                    ContextModeSelector.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+
+        // Sync Selection preview
+        UpdateSelectionPreview(tab);
+
         var keyToUse = string.IsNullOrWhiteSpace(tab.ApiKey) ? _globalApiKey : tab.ApiKey;
         _ai.ApiKey = keyToUse;
         _ai.Model = tab.Model;
@@ -1376,6 +1410,23 @@ public partial class MainWindow : Window
         ReloadButton.IsEnabled = true;
 
         RenderConversation(tab);
+    }
+
+    private void UpdateSelectionPreview(BrowserTab tab)
+    {
+        if (string.IsNullOrWhiteSpace(tab.SelectedText))
+        {
+            SelectionPreviewPanel.Visibility = Visibility.Collapsed;
+            SelectionPreviewText.Text = string.Empty;
+        }
+        else
+        {
+            SelectionPreviewPanel.Visibility = Visibility.Visible;
+            var preview = tab.SelectedText.Length > 160
+                ? tab.SelectedText.Substring(0, 160) + "..."
+                : tab.SelectedText;
+            SelectionPreviewText.Text = preview.Replace("\n", " ").Replace("\r", "");
+        }
     }
 
     // ---------- Conversation helpers ----------
@@ -1403,6 +1454,301 @@ public partial class MainWindow : Window
     {
         var lines = tab.Conversation.Select(m => $"{m.Role}: {m.Text}");
         AiConversation.Text = string.Join("\n\n", lines);
+    }
+
+    // ---------- Quick Actions ----------
+
+    private void ContextModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        if (ContextModeSelector.SelectedItem is ComboBoxItem item && item.Tag is string mode)
+        {
+            tab.ContextMode = mode;
+        }
+    }
+
+    private async void SummarizePage_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        ApplyAiSettingsFromUi();
+
+        AppendMessage(tab, "user", "[Summarize Page]");
+        RenderConversation(tab);
+
+        var pageText = await GetPageInnerTextAsync(tab);
+        var screenshot = await CaptureScreenshotAsync(tab);
+
+        if (string.IsNullOrWhiteSpace(pageText))
+        {
+            AppendMessage(tab, "assistant", "No readable page content found.");
+            RenderConversation(tab);
+            return;
+        }
+
+        AppendMessage(tab, "assistant", "Summarizing...");
+        RenderConversation(tab);
+
+        _ai.ApiKey = string.IsNullOrWhiteSpace(tab.ApiKey) ? _globalApiKey : tab.ApiKey;
+        _ai.Model = tab.Model;
+
+        var summary = await _ai.SummarizeAsync(pageText, screenshot);
+        ReplaceLastAssistantMessage(tab, summary);
+        RenderConversation(tab);
+    }
+
+    private async void KeyPoints_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        ApplyAiSettingsFromUi();
+
+        AppendMessage(tab, "user", "[Key Points]");
+        RenderConversation(tab);
+
+        var pageText = await GetPageInnerTextAsync(tab);
+        var screenshot = await CaptureScreenshotAsync(tab);
+
+        if (string.IsNullOrWhiteSpace(pageText))
+        {
+            AppendMessage(tab, "assistant", "No readable page content found.");
+            RenderConversation(tab);
+            return;
+        }
+
+        AppendMessage(tab, "assistant", "Extracting key points...");
+        RenderConversation(tab);
+
+        // Build context wrapper forcing Page mode for this action
+        var contextWrapper = $"""
+            CONTEXT_MODE: Page
+            SELECTED_TEXT:
+            
+            PAGE_TEXT:
+            {pageText}
+            """;
+
+        _ai.ApiKey = string.IsNullOrWhiteSpace(tab.ApiKey) ? _globalApiKey : tab.ApiKey;
+        _ai.Model = tab.Model;
+
+        var question = "Give me the key points of this page in 5–8 bullets. If it's an article, include who/what/when/why. If it's a product page, include price/specs if present.";
+        var answer = await _ai.AnswerAsync(contextWrapper, question, new List<(string, string)>(), screenshot);
+        ReplaceLastAssistantMessage(tab, answer);
+        RenderConversation(tab);
+    }
+
+    private async void ExplainSelection_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        ApplyAiSettingsFromUi();
+
+        // Fetch selection from the page
+        var selection = await GetSelectionTextAsync(tab);
+
+        if (string.IsNullOrWhiteSpace(selection))
+        {
+            AppendMessage(tab, "assistant", "No text selected. Highlight text on the page first.");
+            RenderConversation(tab);
+            return;
+        }
+
+        // Store selection
+        tab.SelectedText = selection;
+        UpdateSelectionPreview(tab);
+
+        var preview = selection.Length > 80 ? selection.Substring(0, 80) + "..." : selection;
+        AppendMessage(tab, "user", $"[Explain Selection]\n\"{preview}\"");
+        RenderConversation(tab);
+
+        var pageText = await GetPageInnerTextAsync(tab);
+        var screenshot = await CaptureScreenshotAsync(tab);
+
+        AppendMessage(tab, "assistant", "Explaining...");
+        RenderConversation(tab);
+
+        // Build context wrapper with selection prioritized
+        var contextWrapper = $"""
+            CONTEXT_MODE: Auto
+            SELECTED_TEXT:
+            {selection}
+            PAGE_TEXT:
+            {pageText}
+            """;
+
+        _ai.ApiKey = string.IsNullOrWhiteSpace(tab.ApiKey) ? _globalApiKey : tab.ApiKey;
+        _ai.Model = tab.Model;
+
+        var question = "Explain the selected text in simple terms. Provide context and any relevant details.";
+        var answer = await _ai.AnswerAsync(contextWrapper, question, new List<(string, string)>(), screenshot);
+        ReplaceLastAssistantMessage(tab, answer);
+        RenderConversation(tab);
+    }
+
+    private async void CompareTabs_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        // Build list of tabs for the dialog
+        var tabInfos = new List<Dialogs.TabInfo>();
+        int index = 0;
+        foreach (TabItem tabItem in Tabs.Items)
+        {
+            if (tabItem.Tag is BrowserTab browserTab)
+            {
+                var title = browserTab.Browser.Title ?? browserTab.Title ?? "Untitled";
+                var url = browserTab.Browser.Address ?? string.Empty;
+                tabInfos.Add(new Dialogs.TabInfo
+                {
+                    Title = title,
+                    Url = url,
+                    HasBrowser = browserTab.Browser.IsBrowserInitialized,
+                    Index = index
+                });
+            }
+            else
+            {
+                // Non-browser tabs (Settings, History, Downloads)
+                var header = tabItem.Header?.ToString() ?? "Tab";
+                tabInfos.Add(new Dialogs.TabInfo
+                {
+                    Title = header,
+                    Url = "(internal tab)",
+                    HasBrowser = false,
+                    Index = index
+                });
+            }
+            index++;
+        }
+
+        if (tabInfos.Count(t => t.HasBrowser) < 2)
+        {
+            AppendMessage(tab, "assistant", "You need at least 2 web tabs open to compare.");
+            RenderConversation(tab);
+            return;
+        }
+
+        var dialog = new Dialogs.CompareTabsWindow(tabInfos) { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.SelectedTabIndices.Count < 2)
+        {
+            return;
+        }
+
+        ApplyAiSettingsFromUi();
+
+        // Build tab names for the message
+        var selectedTabNames = dialog.SelectedTabIndices
+            .Select(i => tabInfos[i].Title)
+            .ToList();
+        var tabNamesStr = string.Join(" vs ", selectedTabNames);
+
+        AppendMessage(tab, "user", $"[Compare Tabs] {tabNamesStr}");
+        RenderConversation(tab);
+
+        AppendMessage(tab, "assistant", "Comparing tabs...");
+        RenderConversation(tab);
+
+        // Collect content from selected tabs
+        var contentBuilder = new System.Text.StringBuilder();
+        int sourceNum = 1;
+        foreach (var tabIndex in dialog.SelectedTabIndices)
+        {
+            if (Tabs.Items[tabIndex] is TabItem selectedTabItem && selectedTabItem.Tag is BrowserTab selectedBrowserTab)
+            {
+                var title = selectedBrowserTab.Browser.Title ?? selectedBrowserTab.Title ?? "Untitled";
+                var url = selectedBrowserTab.Browser.Address ?? string.Empty;
+                var pageContent = await GetPageInnerTextAsync(selectedBrowserTab);
+
+                // Truncate each source to avoid huge prompts
+                if (pageContent.Length > 8000)
+                    pageContent = pageContent.Substring(0, 8000) + "\n...(truncated)...";
+
+                contentBuilder.AppendLine($"SOURCE {sourceNum}");
+                contentBuilder.AppendLine($"Title: {title}");
+                contentBuilder.AppendLine($"URL: {url}");
+                contentBuilder.AppendLine("CONTENT:");
+                contentBuilder.AppendLine(pageContent);
+                contentBuilder.AppendLine();
+                sourceNum++;
+            }
+        }
+
+        var contextWrapper = $"""
+            CONTEXT_MODE: Page
+            SELECTED_TEXT:
+            
+            PAGE_TEXT:
+            {contentBuilder}
+            """;
+
+        _ai.ApiKey = string.IsNullOrWhiteSpace(tab.ApiKey) ? _globalApiKey : tab.ApiKey;
+        _ai.Model = tab.Model;
+
+        var compareQuestion = string.IsNullOrWhiteSpace(dialog.CompareQuestion)
+            ? "Compare these sources. Create a markdown table showing key differences. Then list which source is best for different use cases."
+            : dialog.CompareQuestion;
+
+        var answer = await _ai.AnswerAsync(contextWrapper, compareQuestion, new List<(string, string)>());
+        ReplaceLastAssistantMessage(tab, answer);
+        RenderConversation(tab);
+    }
+
+    private void ClearChat_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        tab.Conversation.Clear();
+        tab.SelectedText = string.Empty;
+        UpdateSelectionPreview(tab);
+        RenderConversation(tab);
+    }
+
+    private void ClearSelection_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab is null) return;
+
+        tab.SelectedText = string.Empty;
+        UpdateSelectionPreview(tab);
+    }
+
+    private async Task<string> GetSelectionTextAsync(BrowserTab tab)
+    {
+        try
+        {
+            var browser = tab.Browser;
+            if (browser is null || !browser.IsBrowserInitialized) return string.Empty;
+
+            var script = """
+                (() => {
+                    const el = document.activeElement;
+                    const isTextInput = el && (
+                        el.tagName === "TEXTAREA" ||
+                        (el.tagName === "INPUT" && ["text","search","url","email","tel","password"].includes((el.type||"").toLowerCase()))
+                    );
+                    if (isTextInput && typeof el.selectionStart === "number" && typeof el.selectionEnd === "number") {
+                        return (el.value || "").substring(el.selectionStart, el.selectionEnd) || "";
+                    }
+                    return (window.getSelection && window.getSelection().toString()) || "";
+                })()
+                """;
+
+            var response = await browser.EvaluateScriptAsync(script);
+            if (!response.Success || response.Result is null) return string.Empty;
+
+            return response.Result.ToString() ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     // ---------- Settings ----------
@@ -2651,6 +2997,8 @@ internal sealed class BrowserTab
     public string ApiKey { get; set; } = string.Empty;
     public string Model { get; set; } = "gemini-2.5-flash";
     public bool AiVisible { get; set; }
+    public string SelectedText { get; set; } = string.Empty;
+    public string ContextMode { get; set; } = "Auto";
 }
 
 internal sealed class ClosedTabInfo

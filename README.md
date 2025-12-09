@@ -31,7 +31,8 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - `localhost` and `localhost:port` are recognized as local development URLs.
   - Back/Forward/Reload/Home buttons for standard navigation.
 - **Omnibox Suggestions**: Chrome-style autocomplete dropdown as you type in the address bar.
-  - Shows suggestions from bookmarks (★), history (⏱), URL detection (🌐), and Google search (🔍).
+  - Shows suggestions from bookmarks (★), history (⏱), URL detection (🌐), and **live Google Autocomplete** (🔍).
+  - Live search suggestions are fetched from Google's public Suggest API as you type.
   - Keyboard navigation: Up/Down arrows to select, Enter to navigate, Escape to close.
   - Click to navigate in current tab; Ctrl+click or middle-click to open in a new tab.
   - Dropdown stays the same width as the address bar, closes on blur, and appears after a brief typing pause (150ms debounce).
@@ -107,7 +108,10 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - "Find in Page" is only enabled when viewing a web tab (disabled on History/Downloads/Settings tabs).
   - History, Downloads, and Settings toolbar buttons have been moved into this menu to reduce toolbar clutter.
   - All actions still work via keyboard shortcuts (Ctrl+H, Ctrl+J, Ctrl+F, etc.).
-- Settings tab (via App Menu → Settings): set a global Gemini API key shared across existing and new tabs.
+- **Settings** (via App Menu → Settings):
+  - Set a global Gemini API key shared across existing and new tabs.
+  - **API key persists across browser restarts** — saved to `%LocalAppData%\ConjureBrowser\settings.json`.
+  - Environment variable `GEMINI_API_KEY` can override the persisted key on startup.
 
 ## Keyboard Shortcuts
 

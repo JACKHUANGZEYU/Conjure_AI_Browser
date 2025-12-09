@@ -65,6 +65,9 @@ public partial class MainWindow : Window
     // Session restore
     private readonly SessionStore _sessionStore = new();
     private readonly DispatcherTimer _sessionSaveDebounce;
+
+    // Settings persistence (API key)
+    private readonly SettingsStore _settingsStore = new();
     private const int MaxRestoredTabs = 20;
 
     // Omnibox suggestions
@@ -112,10 +115,17 @@ public partial class MainWindow : Window
     {
         await _bookmarks.LoadAsync();
         await _history.LoadAsync();
+        await _settingsStore.LoadAsync();
         RenderBookmarksBar();
 
         // Initialize omnibox suggestions list
         OmniboxList.ItemsSource = _omniboxItems;
+
+        // Load persisted API key first, then allow environment variable to override
+        if (!string.IsNullOrWhiteSpace(_settingsStore.GeminiApiKey))
+        {
+            ApplyGlobalApiKey(_settingsStore.GeminiApiKey, updateExistingTabs: false, updateSettingsUi: false);
+        }
 
         var envKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
         if (!string.IsNullOrWhiteSpace(envKey))
@@ -529,7 +539,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BuildOmniboxSuggestions()
+    private async void BuildOmniboxSuggestions()
     {
         var query = AddressBar.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(query))
@@ -540,6 +550,7 @@ public partial class MainWindow : Window
 
         var suggestions = new List<OmniboxSuggestion>();
         var seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenSearchTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // 1) Bookmark matches (higher priority)
         var bookmarkMatches = _bookmarks.Items
@@ -601,18 +612,38 @@ public partial class MainWindow : Window
             }
         }
 
-        // 4) Search suggestion (always)
-        var searchUrl = $"https://www.google.com/search?q={Uri.EscapeDataString(query)}";
-        suggestions.Add(new OmniboxSuggestion
+        // 4) Fetch Google Autocomplete suggestions (async)
+        var googleSuggestions = await FetchGoogleAutocompleteSuggestionsAsync(query);
+        foreach (var term in googleSuggestions.Take(5))
         {
-            Type = OmniboxSuggestionType.Search,
-            PrimaryText = $"Search Google for \"{query}\"",
-            SecondaryText = "google.com",
-            NavigateTarget = searchUrl
-        });
+            if (seenSearchTerms.Add(term))
+            {
+                var searchUrl = $"https://www.google.com/search?q={Uri.EscapeDataString(term)}";
+                suggestions.Add(new OmniboxSuggestion
+                {
+                    Type = OmniboxSuggestionType.Search,
+                    PrimaryText = term,
+                    SecondaryText = "Search Google",
+                    NavigateTarget = searchUrl
+                });
+            }
+        }
+
+        // 5) Fallback: Always add a direct search for the typed query
+        var directSearchUrl = $"https://www.google.com/search?q={Uri.EscapeDataString(query)}";
+        if (seenSearchTerms.Add(query))
+        {
+            suggestions.Add(new OmniboxSuggestion
+            {
+                Type = OmniboxSuggestionType.Search,
+                PrimaryText = $"Search Google for \"{query}\"",
+                SecondaryText = "google.com",
+                NavigateTarget = directSearchUrl
+            });
+        }
 
         // Limit total suggestions
-        var finalSuggestions = suggestions.Take(8).ToList();
+        var finalSuggestions = suggestions.Take(10).ToList();
 
         // Update observable collection
         _omniboxItems.Clear();
@@ -631,6 +662,50 @@ public partial class MainWindow : Window
             OmniboxPopup.IsOpen = false;
         }
     }
+
+    /// <summary>
+    /// Fetches autocomplete suggestions from Google's public Suggest API.
+    /// </summary>
+    private async Task<List<string>> FetchGoogleAutocompleteSuggestionsAsync(string query)
+    {
+        try
+        {
+            var url = $"http://google.com/complete/search?client=chrome&q={Uri.EscapeDataString(query)}";
+            var response = await _httpClient.GetStringAsync(url).ConfigureAwait(false);
+
+            // Response format: ["query",["suggestion1","suggestion2",...]]
+            using var doc = System.Text.Json.JsonDocument.Parse(response);
+            var root = doc.RootElement;
+
+            if (root.ValueKind == System.Text.Json.JsonValueKind.Array && root.GetArrayLength() >= 2)
+            {
+                var suggestionsArray = root[1];
+                if (suggestionsArray.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    var results = new List<string>();
+                    foreach (var item in suggestionsArray.EnumerateArray())
+                    {
+                        if (item.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            var suggestion = item.GetString();
+                            if (!string.IsNullOrWhiteSpace(suggestion))
+                            {
+                                results.Add(suggestion);
+                            }
+                        }
+                    }
+                    return results;
+                }
+            }
+        }
+        catch
+        {
+            // Silently ignore network errors for autocomplete
+        }
+
+        return new List<string>();
+    }
+
 
     private void NavigateToOmniboxSuggestion(OmniboxSuggestion suggestion, bool openInNewTab)
     {
@@ -1815,17 +1890,21 @@ public partial class MainWindow : Window
         Tabs.SelectedItem = tabItem;
     }
 
-    private void SaveGlobalApiKey()
+    private async void SaveGlobalApiKey()
     {
         if (_settingsApiKeyBox is null) return;
 
         var key = _settingsApiKeyBox.Password.Trim();
         ApplyGlobalApiKey(key);
 
+        // Persist API key to disk
+        _settingsStore.GeminiApiKey = key;
+        await _settingsStore.SaveAsync();
+
         _settingsStatusText?.SetCurrentValue(TextBlock.TextProperty,
             string.IsNullOrWhiteSpace(key)
-                ? "API key cleared. Tabs can still override per-tab keys."
-                : "Saved API key and applied it to every tab.");
+                ? "API key cleared."
+                : "Saved API key. It will persist across restarts.");
     }
 
     private void ApplyGlobalApiKey(string key, bool updateExistingTabs = true, bool updateSettingsUi = true)

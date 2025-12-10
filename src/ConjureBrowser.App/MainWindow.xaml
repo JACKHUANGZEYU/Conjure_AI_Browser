@@ -122,22 +122,8 @@
                         ToolTip="AI Tools"
                         Click="AiToolsButton_Click">
                     <Button.ContextMenu>
-                        <ContextMenu x:Name="AiToolsMenu" MinWidth="200">
-                            <!-- Context Mode -->
-                            <MenuItem Header="Context Mode">
-                                <MenuItem x:Name="ContextAutoMenuItem" Header="Auto" IsCheckable="True" IsChecked="True" Click="ContextMode_Click" Tag="Auto" ToolTip="Use page when relevant, answer generally otherwise" />
-                                <MenuItem x:Name="ContextPageMenuItem" Header="Page only" IsCheckable="True" Click="ContextMode_Click" Tag="Page" ToolTip="Only answer from page content" />
-                                <MenuItem x:Name="ContextGeneralMenuItem" Header="General" IsCheckable="True" Click="ContextMode_Click" Tag="General" ToolTip="Answer from general knowledge" />
-                            </MenuItem>
-                            <Separator />
-                            <!-- Quick Actions -->
-                            <MenuItem Header="📄 Summarize Page" Click="SummarizePage_Click" />
-                            <MenuItem Header="📌 Key Points" Click="KeyPoints_Click" />
-                            <MenuItem Header="💡 Explain Selection" Click="ExplainSelection_Click" />
-                            <MenuItem Header="⚖ Compare Tabs" Click="CompareTabs_Click" />
-                            <Separator />
-                            <MenuItem Header="🗑 Clear Chat" Click="ClearChat_Click" />
-                        </ContextMenu>
+                        <!-- Menu items are dynamically generated based on settings -->
+                        <ContextMenu x:Name="AiToolsMenu" MinWidth="200" />
                     </Button.ContextMenu>
                 </Button>
 
@@ -277,7 +263,8 @@
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition x:Name="AiColumn" Width="0" />
+                <ColumnDefinition x:Name="AiResizeColumn" Width="0" />
+                <ColumnDefinition x:Name="AiColumn" Width="0" MinWidth="0" MaxWidth="600" />
             </Grid.ColumnDefinitions>
 
             <!-- Browser tabs + content -->
@@ -398,8 +385,26 @@
                 </Border>
             </Grid>
 
+            <!-- AI Panel Resize Handle -->
+            <Border x:Name="AiResizeHandle"
+                    Grid.Column="1"
+                    Width="6"
+                    Background="Transparent"
+                    Cursor="SizeWE"
+                    MouseEnter="AiResizeHandle_MouseEnter"
+                    MouseLeave="AiResizeHandle_MouseLeave"
+                    MouseLeftButtonDown="AiResizeHandle_MouseLeftButtonDown"
+                    MouseLeftButtonUp="AiResizeHandle_MouseLeftButtonUp"
+                    MouseMove="AiResizeHandle_MouseMove">
+                <Border x:Name="AiResizeHandleVisual"
+                        Width="2"
+                        Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                        Opacity="0"
+                        HorizontalAlignment="Center" />
+            </Border>
+
             <!-- AI panel -->
-            <Border Grid.Column="1"
+            <Border Grid.Column="2"
                     BorderThickness="1,0,0,0"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
                 <Grid>
@@ -469,7 +474,7 @@
                     <Grid Grid.Row="4" Margin="10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="44" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <TextBox Name="AiInput"
@@ -481,13 +486,24 @@
                                  KeyDown="AiQuestion_KeyDown"
                                  Margin="0,0,8,0" />
 
-                        <Button Name="AiSendButton"
-                                Grid.Column="1"
-                                Width="36"
-                                Height="36"
-                                Content="➤"
-                                Click="AiAsk_Click"
-                                ToolTip="Send" />
+                        <!-- Buttons column -->
+                        <StackPanel Grid.Column="1" Orientation="Vertical" VerticalAlignment="Top">
+                            <Button Name="AiSendButton"
+                                    Width="44"
+                                    Height="40"
+                                    Content="➤"
+                                    FontSize="14"
+                                    Click="AiAsk_Click"
+                                    ToolTip="Send" />
+                            <Button Name="ClearChatButton"
+                                    Width="44"
+                                    Height="28"
+                                    Content="🗑"
+                                    FontSize="11"
+                                    Margin="0,4,0,0"
+                                    Click="ClearChat_Click"
+                                    ToolTip="Clear Chat" />
+                        </StackPanel>
                     </Grid>
                 </Grid>
             </Border>

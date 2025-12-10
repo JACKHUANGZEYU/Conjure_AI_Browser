@@ -75,6 +75,29 @@ public partial class MainWindow : Window
     private DispatcherTimer? _omniboxDebounceTimer;
     private bool _suppressOmniboxTextChanged;
 
+    // AI Tools settings UI controls
+    private CheckBox? _summarizePageToggle;
+    private CheckBox? _keyPointsToggle;
+    private CheckBox? _explainSelectionToggle;
+    private CheckBox? _compareTabsToggle;
+    // Shortcut dropdowns: modifier + letter
+    private ComboBox? _summarizePageModifier;
+    private ComboBox? _summarizePageLetter;
+    private ComboBox? _keyPointsModifier;
+    private ComboBox? _keyPointsLetter;
+    private ComboBox? _explainSelectionModifier;
+    private ComboBox? _explainSelectionLetter;
+    private ComboBox? _compareTabsModifier;
+    private ComboBox? _compareTabsLetter;
+
+    // AI panel resize state
+    private bool _isResizingAiPanel;
+    private Point _resizeStartPoint;
+    private double _resizeStartWidth;
+    private const double AiPanelMinWidth = 280;
+    private const double AiPanelMaxWidth = 600;
+    private const double AiPanelDefaultWidth = 320;
+
     private const string HomeUrl = "https://www.google.com";
 
     public MainWindow()
@@ -168,6 +191,9 @@ public partial class MainWindow : Window
         }
 
         UpdateAiPanelVisibility();
+
+        // Initialize AI Tools menu based on saved settings
+        UpdateAiToolsMenu();
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -757,6 +783,7 @@ public partial class MainWindow : Window
             _activeTab = null;
             AiPanelToggle.IsChecked = false;
             AiPanelToggle.IsEnabled = false;
+            AiResizeColumn.Width = new GridLength(0);
             AiColumn.Width = new GridLength(0);
             BookmarkButton.IsChecked = false;
             BookmarkButton.IsEnabled = false;
@@ -1296,6 +1323,7 @@ public partial class MainWindow : Window
         if (tab is null)
         {
             AiPanelToggle.IsChecked = false;
+            AiResizeColumn.Width = new GridLength(0);
             AiColumn.Width = new GridLength(0);
             return;
         }
@@ -1303,7 +1331,17 @@ public partial class MainWindow : Window
         AiPanelToggle.IsEnabled = true;
         var show = AiPanelToggle.IsChecked == true;
         tab.AiVisible = show;
-        AiColumn.Width = show ? new GridLength(360) : new GridLength(0);
+        
+        if (show)
+        {
+            AiResizeColumn.Width = new GridLength(6);
+            AiColumn.Width = new GridLength(AiPanelDefaultWidth);
+        }
+        else
+        {
+            AiResizeColumn.Width = new GridLength(0);
+            AiColumn.Width = new GridLength(0);
+        }
     }
 
     private void AiQuestion_KeyDown(object sender, KeyEventArgs e)
@@ -1838,6 +1876,7 @@ public partial class MainWindow : Window
             Margin = new Thickness(0, 0, 0, 12)
         });
 
+        // --- API Key Section ---
         stack.Children.Add(new TextBlock
         {
             Text = "Gemini API key (shared across all tabs)",
@@ -1847,18 +1886,20 @@ public partial class MainWindow : Window
         _settingsApiKeyBox = new PasswordBox
         {
             Password = _globalApiKey,
-            Width = 360
+            Width = 360,
+            HorizontalAlignment = HorizontalAlignment.Left
         };
         stack.Children.Add(_settingsApiKeyBox);
 
-        var saveButton = new Button
+        var saveApiKeyButton = new Button
         {
             Content = "Save API key",
             Width = 120,
-            Margin = new Thickness(0, 8, 0, 0)
+            Margin = new Thickness(0, 8, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left
         };
-        saveButton.Click += (_, __) => SaveGlobalApiKey();
-        stack.Children.Add(saveButton);
+        saveApiKeyButton.Click += (_, __) => SaveGlobalApiKey();
+        stack.Children.Add(saveApiKeyButton);
 
         _settingsStatusText = new TextBlock
         {
@@ -1868,15 +1909,296 @@ public partial class MainWindow : Window
         };
         stack.Children.Add(_settingsStatusText);
 
+        // --- AI Tools Section ---
+        stack.Children.Add(new Separator { Margin = new Thickness(0, 16, 0, 16) });
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = "AI Tools",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Enable/disable tools that appear in the 🛠 menu. Optionally set custom keyboard shortcuts (e.g., Ctrl+Shift+S).",
+            Foreground = SystemColors.GrayTextBrush,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+
+        // Create tool settings rows
+        AddToolSettingsRow(stack, "📄 Summarize Page", _settingsStore.SummarizePageEnabled, _settingsStore.SummarizePageShortcut,
+            out _summarizePageToggle, out _summarizePageModifier, out _summarizePageLetter);
+        AddToolSettingsRow(stack, "📌 Key Points", _settingsStore.KeyPointsEnabled, _settingsStore.KeyPointsShortcut,
+            out _keyPointsToggle, out _keyPointsModifier, out _keyPointsLetter);
+        AddToolSettingsRow(stack, "💡 Explain Selection", _settingsStore.ExplainSelectionEnabled, _settingsStore.ExplainSelectionShortcut,
+            out _explainSelectionToggle, out _explainSelectionModifier, out _explainSelectionLetter);
+        AddToolSettingsRow(stack, "⚖ Compare Tabs", _settingsStore.CompareTabsEnabled, _settingsStore.CompareTabsShortcut,
+            out _compareTabsToggle, out _compareTabsModifier, out _compareTabsLetter);
+
+        // Save Tools Settings button
+        var saveToolsButton = new Button
+        {
+            Content = "Save AI Tools Settings",
+            Width = 160,
+            Margin = new Thickness(0, 16, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        saveToolsButton.Click += async (_, __) => await SaveAiToolsSettingsAsync();
+        stack.Children.Add(saveToolsButton);
+
+        // Add ScrollViewer for the settings content
+        var scrollViewer = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = stack
+        };
+
         var tabItem = new TabItem
         {
             Header = "Settings",
-            Content = stack
+            Content = scrollViewer
         };
 
         _settingsTab = tabItem;
         Tabs.Items.Add(tabItem);
         Tabs.SelectedItem = tabItem;
+    }
+
+    private void AddToolSettingsRow(StackPanel parent, string toolName, bool isEnabled, string savedShortcut,
+        out CheckBox toggle, out ComboBox modifierBox, out ComboBox letterBox)
+    {
+        var row = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(180) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+
+        var label = new TextBlock
+        {
+            Text = toolName,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(label, 0);
+        row.Children.Add(label);
+
+        toggle = new CheckBox
+        {
+            IsChecked = isEnabled,
+            Content = "On",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(toggle, 1);
+        row.Children.Add(toggle);
+
+        // Parse saved shortcut into modifier and letter
+        var (savedModifier, savedLetter) = ParseShortcut(savedShortcut);
+
+        // Modifier dropdown
+        modifierBox = new ComboBox
+        {
+            Width = 100,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Modifier keys"
+        };
+        modifierBox.Items.Add(new ComboBoxItem { Content = "(None)", Tag = "" });
+        modifierBox.Items.Add(new ComboBoxItem { Content = "Ctrl", Tag = "Ctrl" });
+        modifierBox.Items.Add(new ComboBoxItem { Content = "Ctrl+Shift", Tag = "Ctrl+Shift" });
+        modifierBox.Items.Add(new ComboBoxItem { Content = "Ctrl+Alt", Tag = "Ctrl+Alt" });
+        modifierBox.Items.Add(new ComboBoxItem { Content = "Alt", Tag = "Alt" });
+        modifierBox.Items.Add(new ComboBoxItem { Content = "Alt+Shift", Tag = "Alt+Shift" });
+        
+        // Select saved modifier
+        foreach (ComboBoxItem item in modifierBox.Items)
+        {
+            if ((item.Tag as string) == savedModifier)
+            {
+                modifierBox.SelectedItem = item;
+                break;
+            }
+        }
+        if (modifierBox.SelectedItem == null) modifierBox.SelectedIndex = 0;
+        
+        Grid.SetColumn(modifierBox, 2);
+        row.Children.Add(modifierBox);
+
+        // Letter dropdown
+        letterBox = new ComboBox
+        {
+            Width = 60,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Letter key"
+        };
+        letterBox.Items.Add(new ComboBoxItem { Content = "-", Tag = "" });
+        for (char c = 'A'; c <= 'Z'; c++)
+        {
+            letterBox.Items.Add(new ComboBoxItem { Content = c.ToString(), Tag = c.ToString() });
+        }
+        
+        // Select saved letter
+        foreach (ComboBoxItem item in letterBox.Items)
+        {
+            if (string.Equals(item.Tag as string, savedLetter, StringComparison.OrdinalIgnoreCase))
+            {
+                letterBox.SelectedItem = item;
+                break;
+            }
+        }
+        if (letterBox.SelectedItem == null) letterBox.SelectedIndex = 0;
+        
+        // Update letter availability when modifier changes
+        var modifierBoxRef = modifierBox;
+        var letterBoxRef = letterBox;
+        modifierBox.SelectionChanged += (s, e) => UpdateLetterAvailability(modifierBoxRef, letterBoxRef);
+        UpdateLetterAvailability(modifierBox, letterBox);
+        
+        Grid.SetColumn(letterBox, 3);
+        row.Children.Add(letterBox);
+
+        parent.Children.Add(row);
+    }
+
+    private static (string modifier, string letter) ParseShortcut(string shortcut)
+    {
+        if (string.IsNullOrWhiteSpace(shortcut)) return ("", "");
+        
+        // Normalize: remove spaces and standardize
+        var normalized = shortcut.Replace(" ", "");
+        var parts = normalized.Split('+');
+        
+        if (parts.Length == 0) return ("", "");
+        
+        // Last part is the letter
+        var letter = parts[^1].ToUpperInvariant();
+        if (letter.Length != 1 || !char.IsLetter(letter[0]))
+        {
+            letter = "";
+        }
+        
+        // Everything else is modifier
+        var modifierParts = parts.Length > 1 ? parts[..^1] : Array.Empty<string>();
+        var modifier = string.Join("+", modifierParts.Select(p => 
+            p.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ? "Ctrl" :
+            p.Equals("Shift", StringComparison.OrdinalIgnoreCase) ? "Shift" :
+            p.Equals("Alt", StringComparison.OrdinalIgnoreCase) ? "Alt" : p));
+        
+        return (modifier, letter);
+    }
+
+    private static void UpdateLetterAvailability(ComboBox modifierBox, ComboBox letterBox)
+    {
+        var selectedModifier = (modifierBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
+        
+        // Letters reserved for Ctrl+<letter> only
+        var ctrlReservedLetters = new HashSet<char> { 'C', 'V', 'X', 'Z', 'Y', 'A', 'S', 'W', 'T', 'N', 'O', 'P', 'F', 'H', 'R', 'L', 'K', 'J' };
+        
+        foreach (ComboBoxItem item in letterBox.Items)
+        {
+            var letter = item.Tag as string ?? "";
+            if (letter.Length == 1)
+            {
+                // Disable if Ctrl-only + reserved letter
+                bool isDisabled = selectedModifier == "Ctrl" && ctrlReservedLetters.Contains(letter[0]);
+                item.IsEnabled = !isDisabled;
+                
+                // If currently selected item becomes disabled, reset to none
+                if (isDisabled && letterBox.SelectedItem == item)
+                {
+                    letterBox.SelectedIndex = 0;
+                }
+            }
+        }
+    }
+
+    private string BuildShortcutFromDropdowns(ComboBox? modifierBox, ComboBox? letterBox)
+    {
+        var modifier = (modifierBox?.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
+        var letter = (letterBox?.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
+        
+        if (string.IsNullOrEmpty(modifier) || string.IsNullOrEmpty(letter))
+            return "";
+        
+        return $"{modifier}+{letter}";
+    }
+
+    private async Task SaveAiToolsSettingsAsync()
+    {
+        // Build shortcuts from dropdowns
+        var summarizeShortcut = BuildShortcutFromDropdowns(_summarizePageModifier, _summarizePageLetter);
+        var keyPointsShortcut = BuildShortcutFromDropdowns(_keyPointsModifier, _keyPointsLetter);
+        var explainShortcut = BuildShortcutFromDropdowns(_explainSelectionModifier, _explainSelectionLetter);
+        var compareShortcut = BuildShortcutFromDropdowns(_compareTabsModifier, _compareTabsLetter);
+
+        // Save to settings store
+        _settingsStore.SummarizePageEnabled = _summarizePageToggle?.IsChecked ?? true;
+        _settingsStore.KeyPointsEnabled = _keyPointsToggle?.IsChecked ?? true;
+        _settingsStore.ExplainSelectionEnabled = _explainSelectionToggle?.IsChecked ?? true;
+        _settingsStore.CompareTabsEnabled = _compareTabsToggle?.IsChecked ?? true;
+
+        _settingsStore.SummarizePageShortcut = summarizeShortcut;
+        _settingsStore.KeyPointsShortcut = keyPointsShortcut;
+        _settingsStore.ExplainSelectionShortcut = explainShortcut;
+        _settingsStore.CompareTabsShortcut = compareShortcut;
+
+        await _settingsStore.SaveAsync();
+
+        // Update the AI Tools menu
+        UpdateAiToolsMenu();
+
+        _settingsStatusText?.SetCurrentValue(TextBlock.TextProperty, "AI Tools settings saved.");
+    }
+
+    private void UpdateAiToolsMenu()
+    {
+        AiToolsMenu.Items.Clear();
+
+        if (_settingsStore.SummarizePageEnabled)
+        {
+            var item = new MenuItem { Header = "📄 Summarize Page" };
+            if (!string.IsNullOrWhiteSpace(_settingsStore.SummarizePageShortcut))
+                item.InputGestureText = _settingsStore.SummarizePageShortcut;
+            item.Click += SummarizePage_Click;
+            AiToolsMenu.Items.Add(item);
+        }
+
+        if (_settingsStore.KeyPointsEnabled)
+        {
+            var item = new MenuItem { Header = "📌 Key Points" };
+            if (!string.IsNullOrWhiteSpace(_settingsStore.KeyPointsShortcut))
+                item.InputGestureText = _settingsStore.KeyPointsShortcut;
+            item.Click += KeyPoints_Click;
+            AiToolsMenu.Items.Add(item);
+        }
+
+        if (_settingsStore.ExplainSelectionEnabled)
+        {
+            var item = new MenuItem { Header = "💡 Explain Selection" };
+            if (!string.IsNullOrWhiteSpace(_settingsStore.ExplainSelectionShortcut))
+                item.InputGestureText = _settingsStore.ExplainSelectionShortcut;
+            item.Click += ExplainSelection_Click;
+            AiToolsMenu.Items.Add(item);
+        }
+
+        if (_settingsStore.CompareTabsEnabled)
+        {
+            var item = new MenuItem { Header = "⚖ Compare Tabs" };
+            if (!string.IsNullOrWhiteSpace(_settingsStore.CompareTabsShortcut))
+                item.InputGestureText = _settingsStore.CompareTabsShortcut;
+            item.Click += CompareTabs_Click;
+            AiToolsMenu.Items.Add(item);
+        }
+
+        // Show message if no tools enabled
+        if (AiToolsMenu.Items.Count == 0)
+        {
+            AiToolsMenu.Items.Add(new MenuItem
+            {
+                Header = "(No tools enabled)",
+                IsEnabled = false
+            });
+        }
     }
 
     private async void SaveGlobalApiKey()
@@ -2103,6 +2425,89 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+
+        // === Custom AI Tool shortcuts ===
+        var pressedShortcut = BuildShortcutString(ctrl, shift, alt, e.Key);
+        if (!string.IsNullOrEmpty(pressedShortcut) && TryHandleAiToolShortcut(pressedShortcut))
+        {
+            e.Handled = true;
+            return;
+        }
+    }
+
+    private string BuildShortcutString(bool ctrl, bool shift, bool alt, Key key)
+    {
+        // Only build shortcut for letter/number keys with modifiers
+        if (!ctrl && !shift && !alt) return string.Empty;
+        
+        var keyStr = key.ToString();
+        
+        // Handle D0-D9 keys
+        if (keyStr.StartsWith("D") && keyStr.Length == 2 && char.IsDigit(keyStr[1]))
+        {
+            keyStr = keyStr[1].ToString();
+        }
+        
+        // Only handle letter and number keys for shortcuts
+        if (keyStr.Length != 1 || (!char.IsLetter(keyStr[0]) && !char.IsDigit(keyStr[0])))
+        {
+            return string.Empty;
+        }
+
+        var parts = new List<string>();
+        if (ctrl) parts.Add("Ctrl");
+        if (shift) parts.Add("Shift");
+        if (alt) parts.Add("Alt");
+        parts.Add(keyStr.ToUpperInvariant());
+
+        return string.Join("+", parts);
+    }
+
+    private bool TryHandleAiToolShortcut(string pressedShortcut)
+    {
+        // Check Summarize Page shortcut
+        if (!string.IsNullOrWhiteSpace(_settingsStore.SummarizePageShortcut) &&
+            string.Equals(pressedShortcut, NormalizeShortcut(_settingsStore.SummarizePageShortcut), StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureAiPanelOpen();
+            SummarizePage_Click(this, new RoutedEventArgs());
+            return true;
+        }
+
+        // Check Key Points shortcut
+        if (!string.IsNullOrWhiteSpace(_settingsStore.KeyPointsShortcut) &&
+            string.Equals(pressedShortcut, NormalizeShortcut(_settingsStore.KeyPointsShortcut), StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureAiPanelOpen();
+            KeyPoints_Click(this, new RoutedEventArgs());
+            return true;
+        }
+
+        // Check Explain Selection shortcut
+        if (!string.IsNullOrWhiteSpace(_settingsStore.ExplainSelectionShortcut) &&
+            string.Equals(pressedShortcut, NormalizeShortcut(_settingsStore.ExplainSelectionShortcut), StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureAiPanelOpen();
+            ExplainSelection_Click(this, new RoutedEventArgs());
+            return true;
+        }
+
+        // Check Compare Tabs shortcut
+        if (!string.IsNullOrWhiteSpace(_settingsStore.CompareTabsShortcut) &&
+            string.Equals(pressedShortcut, NormalizeShortcut(_settingsStore.CompareTabsShortcut), StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureAiPanelOpen();
+            CompareTabs_Click(this, new RoutedEventArgs());
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string NormalizeShortcut(string shortcut)
+    {
+        // Remove all spaces and normalize case
+        return shortcut?.Replace(" ", "").Trim() ?? "";
     }
 
     // === Keyboard shortcut helper methods ===
@@ -2301,32 +2706,10 @@ public partial class MainWindow : Window
     {
         if (AiToolsButton.ContextMenu != null)
         {
-            // Update checkmarks based on current tab's context mode
-            var tab = _activeTab;
-            var mode = tab?.ContextMode ?? "Auto";
-            ContextAutoMenuItem.IsChecked = mode == "Auto";
-            ContextPageMenuItem.IsChecked = mode == "Page";
-            ContextGeneralMenuItem.IsChecked = mode == "General";
-
             AiToolsButton.ContextMenu.PlacementTarget = AiToolsButton;
             AiToolsButton.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
             AiToolsButton.ContextMenu.IsOpen = true;
         }
-    }
-
-    private void ContextMode_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not MenuItem menuItem) return;
-        var tab = _activeTab;
-        if (tab is null) return;
-
-        var mode = menuItem.Tag as string ?? "Auto";
-        tab.ContextMode = mode;
-
-        // Update checkmarks (radio-button style - only one checked at a time)
-        ContextAutoMenuItem.IsChecked = mode == "Auto";
-        ContextPageMenuItem.IsChecked = mode == "Page";
-        ContextGeneralMenuItem.IsChecked = mode == "General";
     }
 
     private void AppMenu_Opened(object sender, RoutedEventArgs e)
@@ -3013,6 +3396,67 @@ public partial class MainWindow : Window
         if (item != null)
         {
             item.IsSelected = true;
+        }
+    }
+
+    // ---------- AI Panel Resize Handle ----------
+
+    private void AiResizeHandle_MouseEnter(object sender, MouseEventArgs e)
+    {
+        AiResizeHandleVisual.Opacity = 1;
+    }
+
+    private void AiResizeHandle_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (!_isResizingAiPanel)
+        {
+            AiResizeHandleVisual.Opacity = 0;
+        }
+    }
+
+    private void AiResizeHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _isResizingAiPanel = true;
+        _resizeStartPoint = e.GetPosition(this);
+        _resizeStartWidth = AiColumn.Width.Value;
+        AiResizeHandle.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void AiResizeHandle_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_isResizingAiPanel)
+        {
+            _isResizingAiPanel = false;
+            AiResizeHandle.ReleaseMouseCapture();
+            AiResizeHandleVisual.Opacity = 0;
+            e.Handled = true;
+        }
+    }
+
+    private void AiResizeHandle_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isResizingAiPanel) return;
+
+        var currentPoint = e.GetPosition(this);
+        var deltaX = _resizeStartPoint.X - currentPoint.X;
+        var newWidth = _resizeStartWidth + deltaX;
+
+        // Clamp to min/max
+        newWidth = Math.Max(AiPanelMinWidth, Math.Min(AiPanelMaxWidth, newWidth));
+
+        AiColumn.Width = new GridLength(newWidth);
+        e.Handled = true;
+    }
+
+    // ---------- AI Panel Helper Methods ----------
+
+    private void EnsureAiPanelOpen()
+    {
+        if (AiColumn.Width.Value < AiPanelMinWidth)
+        {
+            AiPanelToggle.IsChecked = true;
+            UpdateAiPanelVisibility();
         }
     }
 }

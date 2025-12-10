@@ -76,17 +76,16 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - Chat-style log with per-tab conversation memory; scrollable log and fixed-height input
   - Uses current page text AND visual content (screenshots) as context when answering
   - Can analyze images, maps, charts, and other visual elements on the page
+  - **Resizable panel**: Drag the left edge of the panel to resize (280px-600px range)
+  - **Clear Chat button**: Located below the Send button for quick conversation clearing
 - **AI Tools Menu** (🛠 button in toolbar, next to AI button):
-  - **Context Modes**: Control how the AI uses page content:
-    - `Auto` (default): AI uses page context when relevant, answers generally otherwise
-    - `Page only`: AI strictly uses only page content
-    - `General`: AI ignores page entirely, answers from general knowledge
-  - **Quick Actions** (one-click AI features):
+  - **Quick Actions** (one-click AI features, configurable in Settings):
     - `📄 Summarize Page`: Summarize the current page
     - `📌 Key Points`: Extract key points from the page
     - `💡 Explain Selection`: Explain highlighted text on the page
     - `⚖ Compare Tabs`: Select 2+ tabs and generate a comparison
-    - `🗑 Clear Chat`: Clear the conversation and selection
+  - Each tool can be enabled/disabled in Settings
+  - Custom keyboard shortcuts can be assigned to each tool
 - **Find in Page**: Chrome-style find overlay for searching within web pages.
   - Open with Ctrl+F; type to search with incremental highlighting.
   - Enter for next match, Shift+Enter for previous match.
@@ -113,6 +112,13 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - Set a global Gemini API key shared across existing and new tabs.
   - **API key persists across browser restarts** — saved to `%LocalAppData%\ConjureBrowser\settings.json`.
   - Environment variable `GEMINI_API_KEY` can override the persisted key on startup.
+  - **AI Tools Configuration**:
+    - Enable/disable individual AI tools (Summarize Page, Key Points, Explain Selection, Compare Tabs)
+    - Disabled tools won't appear in the 🛠 AI Tools menu
+    - Assign custom keyboard shortcuts using dropdown selectors:
+      - **Modifier dropdown**: Choose from Ctrl, Ctrl+Shift, Ctrl+Alt, Alt, Alt+Shift
+      - **Letter dropdown**: Choose A-Z (reserved letters like C, V, X, etc. are disabled for Ctrl-only)
+    - Shortcuts are conflict-free by design — reserved system shortcuts cannot be selected
 
 ## Keyboard Shortcuts
 
@@ -156,6 +162,19 @@ Mouse: single-click on an unfocused address bar selects all text; double-click j
 | Ctrl+F | Open Find in Page overlay |
 | Ctrl+H | Open History tab |
 | Ctrl+J | Open Downloads tab |
+
+### AI Tools (Custom Shortcuts)
+
+Custom shortcuts for AI tools can be configured in Settings. Example shortcuts:
+
+| Shortcut | Action |
+|----------|--------|
+| (Custom) | Summarize Page |
+| (Custom) | Key Points |
+| (Custom) | Explain Selection |
+| (Custom) | Compare Tabs |
+
+**Note**: AI tool shortcuts auto-open the AI panel if it's closed.
 
 ### Find in Page (when find bar is open)
 | Shortcut | Action |
@@ -247,12 +266,10 @@ Or open `ConjureBrowser.sln` in Visual Studio, set `ConjureBrowser.App` as Start
 4) Type in the input box and press Enter or click send.
 5) Each tab keeps its own chat history; Enter only sends when the chat input is focused and non-empty.
 6) The AI automatically captures screenshots to analyze visual content (images, maps, charts). Ask questions about what you see on the page!
+7) Resize the AI panel by dragging its left edge (280px-600px range).
+8) Use the Clear Chat button (🗑) below the Send button to clear the conversation.
 
-### Context Modes
-Use the "Context" dropdown to control how the AI uses page content:
-- **Auto** (default): The AI uses page context when your question is related to the page, but answers from general knowledge for unrelated questions. Best for normal browsing.
-- **Page only**: The AI strictly uses only the page content. If your question can't be answered from the page, it will say so. Best for analyzing specific pages.
-- **General**: The AI completely ignores the page and answers from general knowledge only. Best for when you want ChatGPT-style answers without page context.
+**Note**: The AI always uses "Auto" context mode, intelligently considering both page content and general knowledge based on your question.
 
 ### Quick Actions
 One-click AI features in the panel:
@@ -278,13 +295,14 @@ One-click AI features in the panel:
 5. Click "Compare" to generate a comparison table and analysis.
 
 **Manual test checklist (AI Features)**
-1. Open a Wikipedia page → click `Summarize` → summary appears in bullets.
+1. Open a Wikipedia page → click `Summarize` (from 🛠 menu) → summary appears in bullets.
 2. Highlight a paragraph → click `Explain Selection` → explanation appears + selection chip shows.
 3. Open 2 product pages in 2 tabs → `Compare Tabs` → output includes comparison table.
-4. Switch Context to `General` → ask "What is photosynthesis?" → should answer normally.
-5. Switch Context to `Page only` → ask "What is photosynthesis?" on a random non-bio page → should say not found on page.
-6. Click `Clear` → conversation clears, selection chip clears.
-7. Switch tabs → context mode and selection preview update to match that tab's state.
+4. Click `Clear Chat` button (🗑 below Send) → conversation clears, selection chip clears.
+5. Switch tabs → selection preview updates to match that tab's state.
+6. Drag left edge of AI panel → panel resizes within 280-600px limits.
+7. Settings → disable a tool → it disappears from 🛠 menu.
+8. Settings → set a custom shortcut (e.g., Ctrl+Shift+S) → pressing it triggers the tool and opens AI panel.
 
 ## Notes / Next Ideas
 - Tab reordering and favicon display.

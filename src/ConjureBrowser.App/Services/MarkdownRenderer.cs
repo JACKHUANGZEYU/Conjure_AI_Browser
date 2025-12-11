@@ -205,7 +205,7 @@ public static class MarkdownRenderer
             FontSize = fontSize,
             FontWeight = FontWeights.Bold,
             Foreground = HeaderColor,
-            Margin = new Thickness(0, 12, 0, 6),
+            Margin = new Thickness(0, 12, 16, 6),
             TextWrapping = TextWrapping.Wrap
         };
     }
@@ -234,13 +234,21 @@ public static class MarkdownRenderer
 
             if (isBlock)
             {
+                // Wrap in horizontal ScrollViewer for wide formulas
+                var scrollViewer = new ScrollViewer
+                {
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    Content = formulaControl
+                };
+
                 return new Border
                 {
                     Background = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x32)),
                     Padding = new Thickness(16, 12, 16, 12),
                     Margin = new Thickness(0, 8, 0, 8),
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    Child = formulaControl
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    Child = scrollViewer
                 };
             }
 
@@ -283,7 +291,7 @@ public static class MarkdownRenderer
             TextWrapping = TextWrapping.Wrap,
             FontSize = 13,
             Foreground = TextColor,
-            Margin = new Thickness(0, 4, 0, 4),
+            Margin = new Thickness(0, 4, 16, 4),
             LineHeight = 20
         };
 
@@ -316,14 +324,40 @@ public static class MarkdownRenderer
                     break;
 
                 case MathInline math:
-                    // Render math as styled italic text with the formula visible
-                    var mathRun = new Run(math.Content.ToString())
+                    // Render math using WpfMath FormulaControl for proper LaTeX display
+                    var mathContent = math.Content.ToString();
+                    try
                     {
-                        FontFamily = new FontFamily("Cambria Math, Times New Roman"),
-                        FontStyle = FontStyles.Italic,
-                        Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xD7, 0x00)) // Gold color for math
-                    };
-                    inlines.Add(mathRun);
+                        var formulaControl = new WpfMath.Controls.FormulaControl
+                        {
+                            Formula = mathContent,
+                            Scale = 14,
+                            Foreground = MathColor
+                        };
+                        
+                        // Wrap in ScrollViewer for wide formulas
+                        var scrollViewer = new ScrollViewer
+                        {
+                            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                            Content = formulaControl,
+                            MaxWidth = 350,
+                            VerticalAlignment = VerticalAlignment.Center
+                        };
+                        
+                        inlines.Add(new InlineUIContainer(scrollViewer));
+                    }
+                    catch
+                    {
+                        // Fallback to styled text if WpfMath parsing fails
+                        var mathRun = new Run(mathContent)
+                        {
+                            FontFamily = new FontFamily("Cambria Math, Times New Roman"),
+                            FontStyle = FontStyles.Italic,
+                            Foreground = MathColor
+                        };
+                        inlines.Add(mathRun);
+                    }
                     break;
 
                 case EmphasisInline emphasis:
@@ -357,41 +391,58 @@ public static class MarkdownRenderer
 
     private static UIElement RenderList(ListBlock list)
     {
-        var stack = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
+        var stack = new StackPanel { Margin = new Thickness(0, 4, 16, 4) };
         var index = 1;
 
         foreach (var item in list)
         {
             if (item is ListItemBlock listItem)
             {
-                var itemPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16, 2, 0, 2) };
+                // Use Grid for proper alignment: bullet on left, content on right
+                var itemGrid = new Grid { Margin = new Thickness(16, 2, 0, 2) };
+                itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+                itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 
                 var bullet = new TextBlock
                 {
                     Text = list.IsOrdered ? $"{index++}. " : "• ",
                     Foreground = TextColor,
                     FontSize = 13,
-                    Width = 24
+                    FontWeight = FontWeights.Bold,
+                    VerticalAlignment = VerticalAlignment.Top
                 };
-                itemPanel.Children.Add(bullet);
+                Grid.SetColumn(bullet, 0);
+                itemGrid.Children.Add(bullet);
 
-                var content = new TextBlock
-                {
-                    TextWrapping = TextWrapping.Wrap,
-                    FontSize = 13,
-                    Foreground = TextColor
-                };
+                // Content panel to hold all sub-blocks
+                var contentPanel = new StackPanel();
 
                 foreach (var subBlock in listItem)
                 {
                     if (subBlock is ParagraphBlock para && para.Inline != null)
                     {
-                        RenderInlines(content.Inlines, para.Inline);
+                        var textBlock = new TextBlock
+                        {
+                            TextWrapping = TextWrapping.Wrap,
+                            FontSize = 13,
+                            Foreground = TextColor,
+                            Margin = new Thickness(0, 0, 0, 4)
+                        };
+                        RenderInlines(textBlock.Inlines, para.Inline);
+                        contentPanel.Children.Add(textBlock);
+                    }
+                    else
+                    {
+                        // Handle non-paragraph blocks (nested lists, code blocks, etc.)
+                        var rendered = RenderBlock(subBlock);
+                        if (rendered != null)
+                            contentPanel.Children.Add(rendered);
                     }
                 }
 
-                itemPanel.Children.Add(content);
-                stack.Children.Add(itemPanel);
+                Grid.SetColumn(contentPanel, 1);
+                itemGrid.Children.Add(contentPanel);
+                stack.Children.Add(itemGrid);
             }
         }
 
@@ -482,7 +533,7 @@ public static class MarkdownRenderer
         {
             BorderBrush = AccentColor,
             BorderThickness = new Thickness(3, 0, 0, 0),
-            Padding = new Thickness(12, 4, 0, 4),
+            Padding = new Thickness(12, 4, 16, 4),
             Margin = new Thickness(0, 4, 0, 4)
         };
 

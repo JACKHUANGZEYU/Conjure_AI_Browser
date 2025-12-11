@@ -132,6 +132,7 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
     - **Bold and italic** text formatting
     - **Inline code** with monospace font and background
     - **Block quotes** with accent border
+    - **LaTeX/math formulas** rendered with proper mathematical notation (powered by WpfMath)
   - Per-tab conversation memory; scrollable log and fixed-height input
   - Uses current page text AND visual content (screenshots) as context when answering
   - Can analyze images, maps, charts, and other visual elements on the page

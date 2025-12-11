@@ -47,6 +47,7 @@ public partial class MainWindow : Window
     private bool _historySearchHasPlaceholder = true;
 
     private readonly DownloadManager _downloadManager = new();
+    private int _visibleBookmarkCount = 0; // Tracks how many bookmarks fit on the bar
     private TabItem? _downloadsTab;
     private ListView? _downloadsListView;
 
@@ -132,6 +133,16 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+        SizeChanged += MainWindow_SizeChanged;
+    }
+
+    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Re-render bookmarks bar when window is resized to update which bookmarks fit
+        if (e.WidthChanged && _bookmarks.Items.Count > 0)
+        {
+            RenderBookmarksBar();
+        }
     }
 
     private async void MainWindow_Loaded(object? sender, RoutedEventArgs e)
@@ -1130,11 +1141,24 @@ public partial class MainWindow : Window
         }
         else
         {
-            foreach (var bookmark in _bookmarks.Items.OrderBy(x => x.Title))
+            // Calculate how many bookmarks are fully visible on the bar
+            var visibleCount = GetVisibleBookmarkCount();
+            var overflowBookmarks = _bookmarks.Items.Skip(visibleCount).ToList();
+
+            if (overflowBookmarks.Count == 0)
             {
-                var item = new MenuItem { Header = bookmark.Title, ToolTip = bookmark.Url };
-                item.Click += (_, __) => Navigate(bookmark.Url);
-                menu.Items.Add(item);
+                // All bookmarks are visible on the bar
+                menu.Items.Add(new MenuItem { Header = "(All bookmarks visible on bar)", IsEnabled = false });
+            }
+            else
+            {
+                // Show only the overflow bookmarks (not visible on bar)
+                foreach (var bookmark in overflowBookmarks)
+                {
+                    var item = new MenuItem { Header = bookmark.Title, ToolTip = bookmark.Url };
+                    item.Click += (_, __) => Navigate(bookmark.Url);
+                    menu.Items.Add(item);
+                }
             }
 
             menu.Items.Add(new Separator());
@@ -1165,9 +1189,71 @@ public partial class MainWindow : Window
         menu.IsOpen = true;
     }
 
+    /// <summary>
+    /// Returns how many bookmarks are currently visible on the bookmarks bar.
+    /// This is calculated and stored by RenderBookmarksBar().
+    /// </summary>
+    private int GetVisibleBookmarkCount()
+    {
+        return _visibleBookmarkCount;
+    }
+
+    /// <summary>
+    /// Gets the available width for bookmarks bar content.
+    /// </summary>
+    private double GetBookmarksBarAvailableWidth()
+    {
+        // Get the parent Grid's actual width (Grid is inside the Border with 8px padding on each side)
+        var parent = BookmarksBarPanel.Parent as Grid;
+        if (parent == null || parent.ActualWidth <= 0)
+        {
+            // Fallback to window width minus some padding
+            return ActualWidth - 100;
+        }
+        return parent.ActualWidth;
+    }
+
+    /// <summary>
+    /// Creates a Chrome-style button template for bookmark buttons.
+    /// </summary>
+    private static ControlTemplate CreateBookmarkButtonTemplate()
+    {
+        var template = new ControlTemplate(typeof(Button));
+
+        // Border with rounded corners
+        var borderFactory = new FrameworkElementFactory(typeof(Border));
+        borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+        borderFactory.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
+        borderFactory.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Button.PaddingProperty));
+        borderFactory.Name = "border";
+
+        // ContentPresenter
+        var contentFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+        contentFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        contentFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        borderFactory.AppendChild(contentFactory);
+
+        template.VisualTree = borderFactory;
+
+        // Hover trigger
+        var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty, 
+            new SolidColorBrush(Color.FromRgb(0x4E, 0x52, 0x56)), "border")); // ChromeButtonHover
+        template.Triggers.Add(hoverTrigger);
+
+        // Pressed trigger
+        var pressedTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
+        pressedTrigger.Setters.Add(new Setter(Border.BackgroundProperty, 
+            new SolidColorBrush(Color.FromRgb(0x5F, 0x63, 0x68)), "border")); // ChromeBorder
+        template.Triggers.Add(pressedTrigger);
+
+        return template;
+    }
+
     private void RenderBookmarksBar()
     {
         BookmarksBarPanel.Children.Clear();
+        _visibleBookmarkCount = 0;
 
         // Context menu for empty area of bookmarks bar (works even when empty)
         var barContextMenu = new ContextMenu();
@@ -1199,28 +1285,61 @@ public partial class MainWindow : Window
         if (_bookmarks.Items.Count == 0)
         {
             BookmarksBarEmptyHint.Visibility = Visibility.Visible;
-            BookmarksBarScroller.Visibility = Visibility.Collapsed;
+            BookmarksBarPanel.Visibility = Visibility.Collapsed;
             return;
         }
 
         BookmarksBarEmptyHint.Visibility = Visibility.Collapsed;
-        BookmarksBarScroller.Visibility = Visibility.Visible;
+        BookmarksBarPanel.Visibility = Visibility.Visible;
+
+        // Get available width for bookmarks
+        var availableWidth = GetBookmarksBarAvailableWidth();
+        double usedWidth = 0;
 
         for (int i = 0; i < _bookmarks.Items.Count; i++)
         {
             var bookmark = _bookmarks.Items[i];
             var index = i; // Capture for closures
 
+            // Shorter title for compact display
+            var displayTitle = bookmark.Title.Length > 20 ? bookmark.Title[..20] + "…" : bookmark.Title;
+
             var button = new Button
             {
-                Content = bookmark.Title.Length > 30 ? bookmark.Title[..30] + "..." : bookmark.Title,
-                ToolTip = bookmark.Url,
-                Padding = new Thickness(10, 4, 10, 4),
-                Margin = new Thickness(0, 0, 6, 0),
-                Background = SystemColors.ControlLightBrush,
-                BorderThickness = new Thickness(1),
-                BorderBrush = SystemColors.ControlDarkBrush
+                Content = displayTitle,
+                ToolTip = $"{bookmark.Title}\n{bookmark.Url}",
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(0, 0, 2, 0),
+                FontSize = 12,
+                Height = 24,
+                Background = new SolidColorBrush(Color.FromRgb(0x3C, 0x40, 0x43)), // ChromeTabHover
+                Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0xEA, 0xED)), // ChromeText
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand
             };
+
+            // Style like Chrome bookmarks
+            button.Style = new Style(typeof(Button))
+            {
+                Setters =
+                {
+                    new Setter(Button.TemplateProperty, CreateBookmarkButtonTemplate())
+                }
+            };
+
+            // Measure button to see if it fits
+            button.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var buttonWidth = button.DesiredSize.Width + button.Margin.Left + button.Margin.Right;
+
+            // If this button would exceed available width, stop adding bookmarks
+            if (usedWidth + buttonWidth > availableWidth && _visibleBookmarkCount > 0)
+            {
+                // Don't add this button or any more - they go to overflow menu
+                break;
+            }
+
+            usedWidth += buttonWidth;
+            _visibleBookmarkCount++;
 
             // Left-click: navigate in current tab
             button.Click += (_, __) => Navigate(bookmark.Url);
@@ -1949,6 +2068,34 @@ public partial class MainWindow : Window
         saveToolsButton.Click += async (_, __) => await SaveAiToolsSettingsAsync();
         stack.Children.Add(saveToolsButton);
 
+        // --- Import Data Section ---
+        stack.Children.Add(new Separator { Margin = new Thickness(0, 16, 0, 16) });
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Import Data",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Import bookmarks and browsing history from Google Chrome.",
+            Foreground = SystemColors.GrayTextBrush,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+
+        var importChromeButton = new Button
+        {
+            Content = "📥 Import from Chrome...",
+            Width = 180,
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        importChromeButton.Click += ImportChromeData_Click;
+        stack.Children.Add(importChromeButton);
+
         // Add ScrollViewer for the settings content
         var scrollViewer = new ScrollViewer
         {
@@ -2216,6 +2363,21 @@ public partial class MainWindow : Window
             string.IsNullOrWhiteSpace(key)
                 ? "API key cleared."
                 : "Saved API key. It will persist across restarts.");
+    }
+
+    private void ImportChromeData_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Dialogs.ImportChromeDataWindow(_bookmarks, _history)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            // Refresh bookmarks bar after successful import
+            RenderBookmarksBar();
+            _settingsStatusText?.SetCurrentValue(TextBlock.TextProperty, "Chrome data imported successfully!");
+        }
     }
 
     private void ApplyGlobalApiKey(string key, bool updateExistingTabs = true, bool updateSettingsUi = true)

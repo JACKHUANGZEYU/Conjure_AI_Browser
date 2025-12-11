@@ -5,10 +5,14 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:cef="clr-namespace:CefSharp.Wpf;assembly=CefSharp.Wpf"
         xmlns:models="clr-namespace:ConjureBrowser.App.Models"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         mc:Ignorable="d"
         Title="Conjure Browser"
         Height="720"
-        Width="1200">
+        Width="1200"
+        Background="{DynamicResource ChromeBackground}"
+        TextElement.Foreground="{DynamicResource ChromeText}"
+        TextElement.FontFamily="{DynamicResource MaterialDesignFont}">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
@@ -21,7 +25,8 @@
                            Text="🌐"
                            FontSize="12"
                            VerticalAlignment="Center"
-                           Margin="0,0,4,0"
+                           Margin="0,0,6,0"
+                           Foreground="{DynamicResource ChromeTextSecondary}"
                            Visibility="Collapsed" />
                 <!-- Favicon image - visible by default -->
                 <Image x:Name="FaviconImage"
@@ -29,19 +34,20 @@
                        Width="16"
                        Height="16"
                        VerticalAlignment="Center"
-                       Margin="0,0,4,0"
+                       Margin="0,0,6,0"
                        Visibility="Visible" />
                 <!-- Title -->
                 <TextBlock Text="{Binding Title}"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"
-                           MaxWidth="140" />
+                           MaxWidth="140"
+                           Foreground="{DynamicResource ChromeText}" />
                 <!-- Loading indicator -->
                 <TextBlock Text="⟳"
                            FontSize="12"
                            VerticalAlignment="Center"
-                           Margin="4,0,0,0"
-                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                           Margin="6,0,0,0"
+                           Foreground="{DynamicResource ChromeAccent}"
                            Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
             </StackPanel>
             <DataTemplate.Triggers>
@@ -56,7 +62,7 @@
 
     <DockPanel LastChildFill="True">
         <!-- Top toolbar -->
-        <Border DockPanel.Dock="Top" Padding="6" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+        <Border DockPanel.Dock="Top" Padding="8,6" Background="{DynamicResource ChromeToolbar}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -72,71 +78,58 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <Button Grid.Column="0" Name="BackButton" Width="36" Margin="0,0,6,0" Content="&lt;" Click="Back_Click" />
-                <Button Grid.Column="1" Name="ForwardButton" Width="36" Margin="0,0,6,0" Content="&gt;" Click="Forward_Click" />
-                <Button Grid.Column="2" Name="ReloadButton" Width="48" Margin="0,0,6,0" Content="Reload" Click="Reload_Click" />
-                <Button Grid.Column="3" Width="48" Margin="0,0,6,0" Content="Home" Click="Home_Click" />
+                <Button Grid.Column="0" Name="BackButton" Style="{StaticResource ChromeToolbarButton}"
+                        Width="36" Margin="0,0,4,0" Content="◀" FontSize="12" Click="Back_Click" ToolTip="Back" />
+                <Button Grid.Column="1" Name="ForwardButton" Style="{StaticResource ChromeToolbarButton}"
+                        Width="36" Margin="0,0,4,0" Content="▶" FontSize="12" Click="Forward_Click" ToolTip="Forward" />
+                <Button Grid.Column="2" Name="ReloadButton" Style="{StaticResource ChromeToolbarButton}"
+                        Width="36" Margin="0,0,4,0" Content="↻" FontSize="16" Click="Reload_Click" ToolTip="Reload" />
+                <Button Grid.Column="3" Style="{StaticResource ChromeToolbarButton}"
+                        Width="36" Margin="0,0,8,0" Content="🏠" FontSize="14" Click="Home_Click" ToolTip="Home" />
 
-                <TextBox Grid.Column="4"
-                         Name="AddressBar"
-                         Margin="0,0,6,0"
-                         VerticalContentAlignment="Center"
-                         KeyDown="AddressBar_KeyDown"
-                         PreviewMouseLeftButtonDown="AddressBar_PreviewMouseLeftButtonDown"
-                         TextChanged="AddressBar_TextChanged"
-                         LostKeyboardFocus="AddressBar_LostKeyboardFocus"
-                         PreviewKeyDown="AddressBar_PreviewKeyDown" />
+                <!-- Address Bar with Material Design styling -->
+                <Border Grid.Column="4" Background="{DynamicResource ChromeTabActive}" CornerRadius="18" 
+                        Margin="0,0,8,0" Padding="12,0">
+                    <TextBox Name="AddressBar"
+                             Background="Transparent"
+                             Foreground="{DynamicResource ChromeText}"
+                             CaretBrush="{DynamicResource ChromeText}"
+                             BorderThickness="0"
+                             VerticalContentAlignment="Center"
+                             FontSize="14"
+                             KeyDown="AddressBar_KeyDown"
+                             PreviewMouseLeftButtonDown="AddressBar_PreviewMouseLeftButtonDown"
+                             TextChanged="AddressBar_TextChanged"
+                             LostKeyboardFocus="AddressBar_LostKeyboardFocus"
+                             PreviewKeyDown="AddressBar_PreviewKeyDown" />
+                </Border>
 
-                <Button Grid.Column="5" Width="64" Margin="0,0,6,0" Content="Go" Click="Go_Click" />
+                <Button Grid.Column="5" Style="{StaticResource ChromeToolbarButton}"
+                        Width="50" Margin="0,0,4,0" Content="Go" Click="Go_Click" />
 
-                <Button Grid.Column="6"
-                        Name="BookmarksMenuButton"
-                        Width="64"
-                        Margin="0,0,6,0"
-                        Content="★▼"
-                        ToolTip="Open bookmarks"
-                        Click="BookmarksMenu_Click" />
+                <Button Grid.Column="6" Name="BookmarksMenuButton" Style="{StaticResource ChromeToolbarButton}"
+                        Width="50" Margin="0,0,4,0" Content="★▼" ToolTip="Open bookmarks" Click="BookmarksMenu_Click" />
 
-                <ToggleButton Grid.Column="7"
-                              Name="BookmarkButton"
-                              Width="44"
-                              Content="☆"
-                              ToolTip="Bookmark this page"
-                              Click="BookmarkButton_Click" />
+                <ToggleButton Grid.Column="7" Name="BookmarkButton" Style="{StaticResource ChromeToggleButton}"
+                              Width="36" Content="☆" ToolTip="Bookmark this page" Click="BookmarkButton_Click" />
 
-                <ToggleButton Grid.Column="8"
-                              Name="AiPanelToggle"
-                              Width="52"
-                              Content="AI"
-                              IsChecked="False"
-                              ToolTip="Show/hide AI panel"
-                              Click="AiPanelToggle_Click" />
+                <ToggleButton Grid.Column="8" Name="AiPanelToggle" Style="{StaticResource ChromeToggleButton}"
+                              Width="44" Margin="4,0" Content="AI" IsChecked="False" 
+                              ToolTip="Show/hide AI panel" Click="AiPanelToggle_Click" />
 
                 <!-- AI Tools Menu Button -->
-                <Button Grid.Column="9"
-                        Name="AiToolsButton"
-                        Width="52"
-                        Margin="2,0,6,0"
-                        Content="🛠"
-                        FontSize="14"
-                        ToolTip="AI Tools"
-                        Click="AiToolsButton_Click">
+                <Button Grid.Column="9" Name="AiToolsButton" Style="{StaticResource ChromeToolbarButton}"
+                        Width="40" Margin="0,0,4,0" Content="🛠" FontSize="16"
+                        ToolTip="AI Tools" Click="AiToolsButton_Click">
                     <Button.ContextMenu>
-                        <!-- Menu items are dynamically generated based on settings -->
                         <ContextMenu x:Name="AiToolsMenu" MinWidth="200" />
                     </Button.ContextMenu>
                 </Button>
 
                 <!-- App Menu Button -->
-                <Button Grid.Column="10"
-                        Name="AppMenuButton"
-                        Width="36"
-                        Margin="0,0,0,0"
-                        Content="⋮"
-                        FontSize="16"
-                        FontWeight="Bold"
-                        ToolTip="Menu"
-                        Click="AppMenuButton_Click">
+                <Button Grid.Column="10" Name="AppMenuButton" Style="{StaticResource ChromeToolbarButton}"
+                        Width="36" Content="⋮" FontSize="18" FontWeight="Bold"
+                        ToolTip="Menu" Click="AppMenuButton_Click">
                     <Button.ContextMenu>
                         <ContextMenu x:Name="AppMenu" MinWidth="220" Opened="AppMenu_Opened">
                             <!-- New -->
@@ -195,24 +188,50 @@
                StaysOpen="False"
                AllowsTransparency="True"
                PopupAnimation="Fade">
-            <Border Background="White"
-                    BorderBrush="#DDD"
+            <Border Background="{DynamicResource ChromeTabActive}"
+                    BorderBrush="{DynamicResource ChromeBorder}"
                     BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="2">
+                    CornerRadius="8"
+                    Padding="4"
+                    Margin="0,4,0,0">
                 <ListBox x:Name="OmniboxList"
-                         MaxHeight="280"
+                         MaxHeight="300"
                          Width="{Binding ActualWidth, ElementName=AddressBar}"
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
                          MouseLeftButtonUp="OmniboxList_MouseLeftButtonUp"
                          PreviewMouseDown="OmniboxList_PreviewMouseDown"
                          BorderThickness="0"
                          Background="Transparent">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Foreground" Value="{DynamicResource ChromeText}" />
+                            <Setter Property="Padding" Value="8,6" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="ItemBorder" Background="{TemplateBinding Background}"
+                                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ChromeTabHover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ChromeButtonHover}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="8,6">
+                            <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="22"/>
+                                    <ColumnDefinition Width="24"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="{Binding IconText}"
@@ -221,9 +240,10 @@
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Text="{Binding PrimaryText}"
                                                FontWeight="SemiBold"
+                                               Foreground="{DynamicResource ChromeText}"
                                                TextTrimming="CharacterEllipsis"/>
                                     <TextBlock Text="{Binding SecondaryText}"
-                                               Foreground="Gray"
+                                               Foreground="{DynamicResource ChromeTextSecondary}"
                                                FontSize="11"
                                                TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
@@ -236,26 +256,24 @@
 
         <!-- Bookmarks Bar -->
         <Border DockPanel.Dock="Top"
-                Padding="6,2"
-                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                Padding="8,4"
+                Background="{DynamicResource ChromeToolbar}"
                 BorderThickness="0,0,0,1"
-                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                BorderBrush="{DynamicResource ChromeBorder}">
             <Grid>
                 <!-- Empty hint (visible when no bookmarks) -->
                 <TextBlock Name="BookmarksBarEmptyHint"
                            Text="No bookmarks yet — click ☆ to add"
-                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                           Foreground="{DynamicResource ChromeTextSecondary}"
                            VerticalAlignment="Center"
+                           FontSize="12"
                            Margin="4,0" />
 
-                <!-- Bookmarks scroll viewer (visible when bookmarks exist) -->
-                <ScrollViewer Name="BookmarksBarScroller"
-                              HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Disabled"
-                              Visibility="Collapsed">
-                    <StackPanel Name="BookmarksBarPanel"
-                                Orientation="Horizontal" />
-                </ScrollViewer>
+                <!-- Bookmarks container (visible when bookmarks exist) -->
+                <StackPanel Name="BookmarksBarPanel"
+                            Orientation="Horizontal"
+                            Visibility="Collapsed"
+                            ClipToBounds="True" />
             </Grid>
         </Border>
 
@@ -272,31 +290,86 @@
                 <TabControl x:Name="Tabs"
                             SelectionChanged="Tabs_SelectionChanged"
                             BorderThickness="0"
+                            Background="{DynamicResource ChromeBackground}"
                             Padding="0">
-                    <TabControl.Resources>
-                        <!-- Style to remove the border around content area -->
-                        <Style TargetType="TabControl">
-                            <Setter Property="BorderThickness" Value="0" />
-                        </Style>
-                    </TabControl.Resources>
                     <TabControl.ItemContainerStyle>
                         <Style TargetType="TabItem">
-                            <Setter Property="HeaderTemplate">
+                            <Setter Property="Background" Value="{DynamicResource ChromeTabBackground}" />
+                            <Setter Property="Foreground" Value="{DynamicResource ChromeText}" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0,4,0,0" />
+                            <Setter Property="MinWidth" Value="80" />
+                            <Setter Property="MaxWidth" Value="240" />
+                            <Setter Property="Template">
                                 <Setter.Value>
-                                    <DataTemplate>
-                                        <DockPanel LastChildFill="True" Margin="2,0">
-                                            <!-- Content presenter for TabHeaderModel or string -->
-                                            <ContentPresenter Content="{Binding Header, RelativeSource={RelativeSource AncestorType=TabItem}}"
-                                                              VerticalAlignment="Center" />
-                                            <Button Width="16"
-                                                    Height="16"
-                                                    Padding="0"
-                                                    Margin="4,0,4,0"
-                                                    Content="×"
-                                                    Tag="{Binding RelativeSource={RelativeSource AncestorType=TabItem}}"
-                                                    Click="CloseTab_Click" />
-                                        </DockPanel>
-                                    </DataTemplate>
+                                    <ControlTemplate TargetType="TabItem">
+                                        <Grid x:Name="Root" SnapsToDevicePixels="true">
+                                            <Border x:Name="TabBorder"
+                                                    Background="{TemplateBinding Background}"
+                                                    CornerRadius="8,8,0,0"
+                                                    Padding="10,6"
+                                                    Margin="1,0">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" MinWidth="20" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <!-- Tab Header Content -->
+                                                    <ContentPresenter Grid.Column="0"
+                                                                      ContentSource="Header"
+                                                                      VerticalAlignment="Center"
+                                                                      HorizontalAlignment="Left"
+                                                                      RecognizesAccessKey="True" />
+                                                    <!-- Close Button - Always visible -->
+                                                    <Button x:Name="CloseButton"
+                                                            Grid.Column="1"
+                                                            Width="18" Height="18"
+                                                            Margin="6,0,0,0"
+                                                            Padding="0"
+                                                            Content="×"
+                                                            Foreground="{DynamicResource ChromeTextSecondary}"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Cursor="Hand"
+                                                            VerticalAlignment="Center"
+                                                            Tag="{Binding RelativeSource={RelativeSource AncestorType=TabItem}}"
+                                                            Click="CloseTab_Click"
+                                                            ToolTip="Close tab">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="CloseBorder"
+                                                                        Background="Transparent"
+                                                                        CornerRadius="9"
+                                                                        Width="18" Height="18">
+                                                                    <TextBlock Text="×"
+                                                                               HorizontalAlignment="Center"
+                                                                               VerticalAlignment="Center"
+                                                                               FontSize="14"
+                                                                               Foreground="{DynamicResource ChromeTextSecondary}"
+                                                                               Margin="0,-1,0,0" />
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="CloseBorder" Property="Background" Value="{DynamicResource ChromeCloseHover}" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+                                        <ControlTemplate.Triggers>
+                                            <!-- Hover state -->
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource ChromeTabHover}" />
+                                            </Trigger>
+                                            <!-- Selected state -->
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource ChromeTabActive}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
                                 </Setter.Value>
                             </Setter>
                         </Style>
@@ -310,18 +383,16 @@
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
                                 <!-- Tab header row with tabs and + button -->
-                                <StackPanel Grid.Row="0" Orientation="Horizontal">
-                                    <TabPanel IsItemsHost="True" />
-                                    <Button x:Name="NewTabButton"
-                                            Width="28"
-                                            Height="22"
-                                            Margin="2,2,0,0"
-                                            Content="+"
-                                            FontSize="14"
-                                            VerticalAlignment="Center"
-                                            Click="NewTab_Click"
-                                            ToolTip="New tab (Ctrl+T)" />
-                                </StackPanel>
+                                <Border Grid.Row="0" Background="{DynamicResource ChromeBackground}" Padding="4,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TabPanel IsItemsHost="True" />
+                                        <Button x:Name="NewTabButton"
+                                                Style="{StaticResource ChromeNewTabButton}"
+                                                Margin="4,4,0,0"
+                                                Click="NewTab_Click"
+                                                ToolTip="New tab (Ctrl+T)" />
+                                    </StackPanel>
+                                </Border>
                                 <!-- Tab content area -->
                                 <Border Grid.Row="1"
                                         BorderThickness="0"
@@ -338,48 +409,47 @@
                         Visibility="Collapsed"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Top"
-                        Margin="10,32,10,0"
-                        Padding="8,6"
-                        CornerRadius="6"
+                        Margin="10,40,10,0"
+                        Padding="12,8"
+                        CornerRadius="8"
                         BorderThickness="1"
-                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                        Background="{DynamicResource ChromeToolbar}"
+                        BorderBrush="{DynamicResource ChromeBorder}">
                     <StackPanel Orientation="Horizontal">
-                        <TextBox x:Name="FindTextBox"
-                                 Width="220"
-                                 VerticalContentAlignment="Center"
-                                 TextChanged="FindTextBox_TextChanged"
-                                 PreviewKeyDown="FindTextBox_PreviewKeyDown" />
+                        <Border Background="{DynamicResource ChromeTabActive}" CornerRadius="4" Padding="8,4">
+                            <TextBox x:Name="FindTextBox"
+                                     Width="200"
+                                     Background="Transparent"
+                                     Foreground="{DynamicResource ChromeText}"
+                                     CaretBrush="{DynamicResource ChromeText}"
+                                     BorderThickness="0"
+                                     VerticalContentAlignment="Center"
+                                     TextChanged="FindTextBox_TextChanged"
+                                     PreviewKeyDown="FindTextBox_PreviewKeyDown" />
+                        </Border>
                         <ToggleButton x:Name="FindMatchCaseToggle"
-                                      Width="28"
+                                      Style="{StaticResource ChromeToggleButton}"
+                                      Width="32" Height="28"
                                       Margin="6,0,0,0"
                                       Content="Aa"
+                                      FontSize="12"
                                       ToolTip="Match case"
                                       Checked="FindMatchCaseToggle_Changed"
                                       Unchecked="FindMatchCaseToggle_Changed" />
-                        <Button x:Name="FindPrevButton"
-                                Width="28"
-                                Margin="6,0,0,0"
-                                Content="↑"
-                                ToolTip="Previous (Shift+Enter)"
+                        <Button x:Name="FindPrevButton" Style="{StaticResource ChromeToolbarButton}"
+                                Width="32" Margin="4,0,0,0" Content="↑" ToolTip="Previous (Shift+Enter)"
                                 Click="FindPrevButton_Click" />
-                        <Button x:Name="FindNextButton"
-                                Width="28"
-                                Margin="2,0,0,0"
-                                Content="↓"
-                                ToolTip="Next (Enter)"
+                        <Button x:Name="FindNextButton" Style="{StaticResource ChromeToolbarButton}"
+                                Width="32" Margin="2,0,0,0" Content="↓" ToolTip="Next (Enter)"
                                 Click="FindNextButton_Click" />
                         <TextBlock x:Name="FindCountText"
                                    Text="0/0"
                                    VerticalAlignment="Center"
                                    Margin="8,0,0,0"
                                    MinWidth="40"
-                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                        <Button x:Name="FindCloseButton"
-                                Width="24"
-                                Margin="6,0,0,0"
-                                Content="✕"
-                                ToolTip="Close (Esc)"
+                                   Foreground="{DynamicResource ChromeTextSecondary}" />
+                        <Button x:Name="FindCloseButton" Style="{StaticResource ChromeToolbarButton}"
+                                Width="28" Margin="6,0,0,0" Content="✕" ToolTip="Close (Esc)"
                                 Click="FindCloseButton_Click" />
                     </StackPanel>
                 </Border>
@@ -398,7 +468,7 @@
                     MouseMove="AiResizeHandle_MouseMove">
                 <Border x:Name="AiResizeHandleVisual"
                         Width="2"
-                        Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                        Background="{DynamicResource ChromeBorder}"
                         Opacity="0"
                         HorizontalAlignment="Center" />
             </Border>
@@ -406,7 +476,8 @@
             <!-- AI panel -->
             <Border Grid.Column="2"
                     BorderThickness="1,0,0,0"
-                    BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                    BorderBrush="{DynamicResource ChromeBorder}"
+                    Background="{DynamicResource ChromeToolbar}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -417,29 +488,33 @@
                     </Grid.RowDefinitions>
 
                     <!-- Header / controls -->
-                    <StackPanel Grid.Row="0" Margin="10,10,10,6">
-                        <TextBlock Text="AI Assistant" FontWeight="SemiBold" FontSize="14" />
+                    <StackPanel Grid.Row="0" Margin="12,12,12,8">
+                        <TextBlock Text="AI Assistant" FontWeight="SemiBold" FontSize="15" 
+                                   Foreground="{DynamicResource ChromeText}" />
 
-                        <StackPanel Margin="0,8,0,0">
-                            <TextBlock Text="Model" FontSize="11" />
-                            <ComboBox Name="ModelSelector" SelectedIndex="0" FontSize="11">
+                        <StackPanel Margin="0,10,0,0">
+                            <TextBlock Text="Model" FontSize="11" Foreground="{DynamicResource ChromeTextSecondary}" />
+                            <ComboBox Name="ModelSelector" SelectedIndex="0" FontSize="12"
+                                      Background="{DynamicResource ChromeTabActive}"
+                                      Foreground="{DynamicResource ChromeText}"
+                                      Margin="0,4,0,0">
                                 <ComboBoxItem Content="gemini-2.5-flash" Tag="gemini-2.5-flash" />
                                 <ComboBoxItem Content="gemini-3.0-pro" Tag="gemini-3.0-pro" />
                             </ComboBox>
                         </StackPanel>
                         
                         <TextBlock Text="API key is set in Settings (⚙). Use 🛠 for AI tools."
-                                   Margin="0,4,0,0"
-                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                   Margin="0,6,0,0"
+                                   Foreground="{DynamicResource ChromeTextSecondary}"
                                    FontSize="10" />
                     </StackPanel>
 
                     <!-- Selection Preview (hidden when empty) -->
                     <Border Name="SelectionPreviewPanel" Grid.Row="2" 
-                            Margin="10,0,10,6" Padding="6,4"
-                            Background="{DynamicResource {x:Static SystemColors.InfoBrushKey}}"
-                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
-                            BorderThickness="1" CornerRadius="4"
+                            Margin="12,0,12,8" Padding="8,6"
+                            Background="{DynamicResource ChromeTabActive}"
+                            BorderBrush="{DynamicResource ChromeBorder}"
+                            BorderThickness="1" CornerRadius="6"
                             Visibility="Collapsed">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -448,12 +523,14 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="Selection:" FontSize="10" FontWeight="SemiBold" 
-                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                                           Foreground="{DynamicResource ChromeTextSecondary}" />
                                 <TextBlock Name="SelectionPreviewText" 
                                            FontSize="11" TextTrimming="CharacterEllipsis" 
-                                           MaxHeight="36" TextWrapping="Wrap" />
+                                           MaxHeight="36" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource ChromeText}" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="✕" Width="20" Height="20" 
+                            <Button Grid.Column="1" Style="{StaticResource ChromeToolbarButton}"
+                                    Content="✕" Width="24" Height="24" 
                                     FontSize="10" Padding="0" VerticalAlignment="Top"
                                     Click="ClearSelection_Click" ToolTip="Clear selection" />
                         </Grid>
@@ -461,45 +538,49 @@
 
                     <!-- Conversation log -->
                     <ScrollViewer Grid.Row="3"
-                                  Margin="10,0,10,6"
+                                  Margin="12,0,12,8"
                                   VerticalScrollBarVisibility="Auto">
                         <TextBlock Name="AiConversation"
                                    TextWrapping="Wrap"
                                    FontFamily="Consolas"
                                    FontSize="12"
+                                   Foreground="{DynamicResource ChromeText}"
                                    PreviewMouseDown="AiConversation_PreviewMouseDown" />
                     </ScrollViewer>
 
                     <!-- Input area -->
-                    <Grid Grid.Row="4" Margin="10">
+                    <Grid Grid.Row="4" Margin="12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <TextBox Name="AiInput"
-                                 Grid.Column="0"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 Height="72"
-                                 VerticalScrollBarVisibility="Auto"
-                                 KeyDown="AiQuestion_KeyDown"
-                                 Margin="0,0,8,0" />
+                        <Border Grid.Column="0" Background="{DynamicResource ChromeTabActive}" 
+                                CornerRadius="8" Padding="8,4" Margin="0,0,8,0">
+                            <TextBox Name="AiInput"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     Height="68"
+                                     Background="Transparent"
+                                     Foreground="{DynamicResource ChromeText}"
+                                     CaretBrush="{DynamicResource ChromeText}"
+                                     BorderThickness="0"
+                                     VerticalScrollBarVisibility="Auto"
+                                     KeyDown="AiQuestion_KeyDown" />
+                        </Border>
 
                         <!-- Buttons column -->
                         <StackPanel Grid.Column="1" Orientation="Vertical" VerticalAlignment="Top">
-                            <Button Name="AiSendButton"
-                                    Width="44"
-                                    Height="40"
-                                    Content="➤"
-                                    FontSize="14"
+                            <Button Name="AiSendButton" Style="{StaticResource ChromeToolbarButton}"
+                                    Width="44" Height="36"
+                                    Content="➤" FontSize="16"
+                                    Background="{DynamicResource ChromeAccent}"
+                                    Foreground="#202124"
                                     Click="AiAsk_Click"
                                     ToolTip="Send" />
-                            <Button Name="ClearChatButton"
-                                    Width="44"
-                                    Height="28"
-                                    Content="🗑"
-                                    FontSize="11"
+                            <Button Name="ClearChatButton" Style="{StaticResource ChromeToolbarButton}"
+                                    Width="44" Height="28"
+                                    Content="🗑" FontSize="12"
                                     Margin="0,4,0,0"
                                     Click="ClearChat_Click"
                                     ToolTip="Clear Chat" />

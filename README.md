@@ -1,9 +1,58 @@
-## Running
+## Running (Development)
 From repo root:
 ```powershell
 dotnet restore
 dotnet build
 dotnet run --project .\src\ConjureBrowser.App
+```
+
+## Building & Installing as a Windows Application
+
+### Build a Standalone Release
+To create a self-contained Windows executable (no .NET installation required):
+```powershell
+dotnet publish .\src\ConjureBrowser.App -c Release -r win-x64 --self-contained -o .\publish
+```
+
+This creates a `publish` folder containing:
+- `ConjureBrowser.App.exe` — the main executable with embedded icon
+- All required DLLs (CefSharp/Chromium, .NET runtime)
+- Resource files (`locales/`, `.pak` files)
+
+**Note**: The entire `publish` folder is required to run the app. The exe alone will not work because CefSharp requires the Chromium binaries alongside it.
+
+### Install Shortcuts (Current Machine)
+To add Desktop and Start Menu shortcuts:
+```powershell
+# Desktop shortcut
+$WshShell = New-Object -comObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Conjure Browser.lnk")
+$Shortcut.TargetPath = "D:\Conjure_AI_Browser\publish\ConjureBrowser.App.exe"
+$Shortcut.WorkingDirectory = "D:\Conjure_AI_Browser\publish"
+$Shortcut.Description = "Conjure AI Browser"
+$Shortcut.Save()
+
+# Start Menu shortcut
+$StartMenuPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+$Shortcut = $WshShell.CreateShortcut("$StartMenuPath\Conjure Browser.lnk")
+$Shortcut.TargetPath = "D:\Conjure_AI_Browser\publish\ConjureBrowser.App.exe"
+$Shortcut.WorkingDirectory = "D:\Conjure_AI_Browser\publish"
+$Shortcut.Description = "Conjure AI Browser"
+$Shortcut.Save()
+```
+
+### Distribute to Other Machines
+1. Zip the entire `publish` folder:
+   ```powershell
+   Compress-Archive -Path ".\publish\*" -DestinationPath "ConjureBrowser-v1.0.zip"
+   ```
+2. Share the zip file with users
+3. Users extract and run `ConjureBrowser.App.exe`
+
+### Application Icon
+The app uses `src/ConjureBrowser.App/app.ico` (generated from `Conjure.png`). To regenerate:
+```powershell
+python -c "from PIL import Image; img = Image.open('Conjure.png'); img.save('src/ConjureBrowser.App/app.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])"
 ```
 
 # Conjure AI Browser (WPF + CEF/Chromium)
@@ -20,6 +69,7 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
 ## Tech Stack
 - .NET 8 (`net8.0-windows`), WPF
 - Embedded engine: CefSharp (`CefSharp.Wpf.NETCore`) on Chromium
+- UI Framework: MaterialDesignThemes (Chrome-like dark theme)
 - Runtime: win-x64
 - AI: Gemini models (`gemini-2.5-flash`, `gemini-3.0-pro` -> API `gemini-3-pro-preview` via v1beta)
 
@@ -119,6 +169,11 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
       - **Modifier dropdown**: Choose from Ctrl, Ctrl+Shift, Ctrl+Alt, Alt, Alt+Shift
       - **Letter dropdown**: Choose A-Z (reserved letters like C, V, X, etc. are disabled for Ctrl-only)
     - Shortcuts are conflict-free by design — reserved system shortcuts cannot be selected
+  - **Import from Chrome**:
+    - Import bookmarks and browsing history from Google Chrome
+    - Auto-detects Chrome profiles (Default, Profile 1, etc.)
+    - Merges imported data with existing Conjure data (duplicates skipped)
+    - Supports custom Chrome profile names
 
 ## Keyboard Shortcuts
 
@@ -249,6 +304,28 @@ Custom shortcuts for AI tools can be configured in Settings. Example shortcuts:
 - Skips `about:blank` and `chrome-devtools://` URLs.
 - Clear action only removes history entries (does not clear cookies/cache/downloads).
 - Timestamps display in local time (HH:mm) even though they are stored in UTC.
+
+## Chrome Import
+- What changed: Added ability to import bookmarks and browsing history from Google Chrome.
+- How to use: Open Settings (via ⋮ menu → Settings) → scroll down to "Import Data" section → click "Import from Chrome...". Select your Chrome profile from the dropdown. Check which data types to import (Bookmarks, History). Click Import.
+- Supported data: Bookmarks (from Chrome's JSON file), Browsing History (from Chrome's SQLite database).
+- Behavior: Imported data is **merged** with existing Conjure data. Duplicate bookmarks (same URL) are skipped. History entries with duplicate URLs are also skipped.
+- Profile detection: Automatically finds Chrome at `%LOCALAPPDATA%\Google\Chrome\User Data\`. Detects all profiles (Default, Profile 1, etc.) and reads custom profile names from Chrome preferences.
+
+**Manual test checklist (Chrome Import)**
+1) Open Settings → scroll to "Import Data" → click "Import from Chrome..." → dialog opens with detected profiles.
+2) Select a profile → see available data checkboxes (Bookmarks ✓, History ✓).
+3) Import bookmarks → they appear in the Conjure bookmarks bar immediately.
+4) Import history → entries appear in Conjure's History tab (Ctrl+H).
+5) Re-import → duplicates are skipped; import count shows "X imported, Y skipped".
+6) If Chrome not installed → dialog shows "Chrome Not Found" message.
+
+**Known limitations**
+- Chrome extensions cannot be imported (not supported by CEF/CefSharp).
+- Saved passwords cannot be imported (encrypted by Chrome).
+- Chrome must not be running when importing history (database is locked); the importer copies the database to a temp file to work around this.
+- Only imports `http://` and `https://` URLs.
+
 
 ## Running
 From repo root:

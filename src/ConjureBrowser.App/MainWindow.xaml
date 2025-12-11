@@ -488,26 +488,43 @@
                     </Grid.RowDefinitions>
 
                     <!-- Header / controls -->
-                    <StackPanel Grid.Row="0" Margin="12,12,12,8">
-                        <TextBlock Text="AI Assistant" FontWeight="SemiBold" FontSize="15" 
-                                   Foreground="{DynamicResource ChromeText}" />
+                    <Grid Grid.Row="0" Margin="12,12,12,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="AI Assistant" FontWeight="SemiBold" FontSize="15" 
+                                       Foreground="{DynamicResource ChromeText}" />
 
-                        <StackPanel Margin="0,10,0,0">
-                            <TextBlock Text="Model" FontSize="11" Foreground="{DynamicResource ChromeTextSecondary}" />
-                            <ComboBox Name="ModelSelector" SelectedIndex="0" FontSize="12"
-                                      Background="{DynamicResource ChromeTabActive}"
-                                      Foreground="{DynamicResource ChromeText}"
-                                      Margin="0,4,0,0">
-                                <ComboBoxItem Content="gemini-2.5-flash" Tag="gemini-2.5-flash" />
-                                <ComboBoxItem Content="gemini-3.0-pro" Tag="gemini-3.0-pro" />
-                            </ComboBox>
+                            <StackPanel Margin="0,10,0,0">
+                                <TextBlock Text="Model" FontSize="11" Foreground="{DynamicResource ChromeTextSecondary}" />
+                                <ComboBox Name="ModelSelector" SelectedIndex="0" FontSize="12"
+                                          Background="{DynamicResource ChromeTabActive}"
+                                          Foreground="{DynamicResource ChromeText}"
+                                          Margin="0,4,0,0">
+                                    <ComboBoxItem Content="gemini-2.5-flash" Tag="gemini-2.5-flash" />
+                                    <ComboBoxItem Content="gemini-3.0-pro" Tag="gemini-3.0-pro" />
+                                </ComboBox>
+                            </StackPanel>
+                        
+                            <TextBlock Text="API key is set in Settings (⚙). Use 🛠 for AI tools."
+                                       Margin="0,6,0,0"
+                                       Foreground="{DynamicResource ChromeTextSecondary}"
+                                       FontSize="10" />
                         </StackPanel>
                         
-                        <TextBlock Text="API key is set in Settings (⚙). Use 🛠 for AI tools."
-                                   Margin="0,6,0,0"
-                                   Foreground="{DynamicResource ChromeTextSecondary}"
-                                   FontSize="10" />
-                    </StackPanel>
+                        <!-- Clear Chat button in top-right corner -->
+                        <Button Grid.Column="1" 
+                                Name="ClearChatButton" 
+                                Style="{StaticResource ChromeToolbarButton}"
+                                Width="28" Height="28"
+                                Content="🗑" FontSize="11"
+                                VerticalAlignment="Top"
+                                Click="ClearChat_Click"
+                                ToolTip="Clear Chat" />
+                    </Grid>
 
                     <!-- Selection Preview (hidden when empty) -->
                     <Border Name="SelectionPreviewPanel" Grid.Row="2" 
@@ -536,55 +553,58 @@
                         </Grid>
                     </Border>
 
-                    <!-- Conversation log -->
-                    <ScrollViewer Grid.Row="3"
+                    <!-- Conversation log with chat bubbles -->
+                    <ScrollViewer Name="AiConversationScroller" Grid.Row="3"
                                   Margin="12,0,12,8"
                                   VerticalScrollBarVisibility="Auto">
-                        <TextBlock Name="AiConversation"
-                                   TextWrapping="Wrap"
-                                   FontFamily="Consolas"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource ChromeText}"
-                                   PreviewMouseDown="AiConversation_PreviewMouseDown" />
+                        <ItemsControl Name="AiConversationPanel">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Vertical" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
                     </ScrollViewer>
 
-                    <!-- Input area -->
-                    <Grid Grid.Row="4" Margin="12">
+                    <!-- Input area with styled border -->
+                    <Grid Grid.Row="4" Margin="12,0,12,12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0" Background="{DynamicResource ChromeTabActive}" 
-                                CornerRadius="8" Padding="8,4" Margin="0,0,8,0">
+                        <!-- Input box with visible border -->
+                        <Border Grid.Column="0" 
+                                Background="{DynamicResource ChromeTabActive}" 
+                                BorderBrush="{DynamicResource ChromeBorder}"
+                                BorderThickness="1"
+                                CornerRadius="12" 
+                                Padding="12,8" 
+                                Margin="0,0,8,0">
                             <TextBox Name="AiInput"
                                      AcceptsReturn="True"
                                      TextWrapping="Wrap"
-                                     Height="68"
+                                     MaxHeight="100"
+                                     MinHeight="36"
                                      Background="Transparent"
                                      Foreground="{DynamicResource ChromeText}"
                                      CaretBrush="{DynamicResource ChromeText}"
                                      BorderThickness="0"
+                                     VerticalAlignment="Center"
                                      VerticalScrollBarVisibility="Auto"
-                                     KeyDown="AiQuestion_KeyDown" />
+                                     PreviewKeyDown="AiQuestion_KeyDown" />
                         </Border>
 
-                        <!-- Buttons column -->
-                        <StackPanel Grid.Column="1" Orientation="Vertical" VerticalAlignment="Top">
-                            <Button Name="AiSendButton" Style="{StaticResource ChromeToolbarButton}"
-                                    Width="44" Height="36"
-                                    Content="➤" FontSize="16"
-                                    Background="{DynamicResource ChromeAccent}"
-                                    Foreground="#202124"
-                                    Click="AiAsk_Click"
-                                    ToolTip="Send" />
-                            <Button Name="ClearChatButton" Style="{StaticResource ChromeToolbarButton}"
-                                    Width="44" Height="28"
-                                    Content="🗑" FontSize="12"
-                                    Margin="0,4,0,0"
-                                    Click="ClearChat_Click"
-                                    ToolTip="Clear Chat" />
-                        </StackPanel>
+                        <!-- Send button only (Clear moved to header) -->
+                        <Button Grid.Column="1"
+                                Name="AiSendButton" 
+                                Style="{StaticResource ChromeToolbarButton}"
+                                Width="44" Height="44"
+                                Content="➤" FontSize="18"
+                                Background="{DynamicResource ChromeAccent}"
+                                Foreground="#202124"
+                                Click="AiAsk_Click"
+                                ToolTip="Send (Enter)" />
                     </Grid>
                 </Grid>
             </Border>

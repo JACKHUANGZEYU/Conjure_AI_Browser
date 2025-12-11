@@ -123,11 +123,20 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - External schemes (`mailto:`, `tel:`) are passed to the system's default handler.
 - **AI Assistant Panel** (per tab, toggle via `AI` button in toolbar):
   - Model picker (`gemini-2.5-flash` or `gemini-3.0-pro`) in the panel; uses the global API key from Settings
-  - Chat-style log with per-tab conversation memory; scrollable log and fixed-height input
+  - **Chat-style UI**: User messages in blue bubbles (right-aligned), AI responses as plain text
+  - **Markdown Rendering**: AI responses render with proper formatting:
+    - **Code blocks** with syntax highlighting, language label, and copy button
+    - **Tables** rendered as grids with header styling
+    - **Headers** (H1-H4) with appropriate font sizes
+    - **Lists** (bulleted and numbered)
+    - **Bold and italic** text formatting
+    - **Inline code** with monospace font and background
+    - **Block quotes** with accent border
+  - Per-tab conversation memory; scrollable log and fixed-height input
   - Uses current page text AND visual content (screenshots) as context when answering
   - Can analyze images, maps, charts, and other visual elements on the page
   - **Resizable panel**: Drag the left edge of the panel to resize (280px-600px range)
-  - **Clear Chat button**: Located below the Send button for quick conversation clearing
+  - **Clear Chat button**: Located in top-right corner of panel header
 - **AI Tools Menu** (🛠 button in toolbar, next to AI button):
   - **Quick Actions** (one-click AI features, configurable in Settings):
     - `📄 Summarize Page`: Summarize the current page

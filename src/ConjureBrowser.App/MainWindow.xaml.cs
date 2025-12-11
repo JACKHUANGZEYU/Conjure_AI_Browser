@@ -1682,8 +1682,57 @@ public partial class MainWindow : Window
 
     private void RenderConversation(BrowserTab tab)
     {
-        var lines = tab.Conversation.Select(m => $"{m.Role}: {m.Text}");
-        AiConversation.Text = string.Join("\n\n", lines);
+        AiConversationPanel.Items.Clear();
+
+        foreach (var (role, text) in tab.Conversation)
+        {
+            var isUser = role == "user";
+            
+            if (isUser)
+            {
+                // User message: styled bubble, right-aligned, all corners rounded
+                var bubble = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xD9)), // Blue
+                    CornerRadius = new CornerRadius(16), // All corners rounded uniformly
+                    Padding = new Thickness(14, 10, 14, 10),
+                    Margin = new Thickness(20, 8, 0, 8), // Wider: less left margin
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    MaxWidth = 400 // Wider max width
+                };
+
+                var messageText = new TextBlock
+                {
+                    Text = text,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 13,
+                    Foreground = Brushes.White
+                };
+
+                bubble.Child = messageText;
+                AiConversationPanel.Items.Add(bubble);
+            }
+            else
+            {
+                // AI response: render as markdown (code blocks, tables, etc.)
+                var container = new StackPanel
+                {
+                    Margin = new Thickness(0, 8, 4, 8)
+                };
+
+                // Use MarkdownRenderer to parse and create UI elements
+                var elements = Services.MarkdownRenderer.Render(text);
+                foreach (var element in elements)
+                {
+                    container.Children.Add(element);
+                }
+
+                AiConversationPanel.Items.Add(container);
+            }
+        }
+
+        // Auto-scroll to bottom
+        AiConversationScroller.ScrollToEnd();
     }
 
     // ---------- Quick Actions ----------

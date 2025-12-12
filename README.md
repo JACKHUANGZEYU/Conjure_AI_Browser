@@ -125,8 +125,8 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - Model picker (`gemini-2.5-flash` or `gemini-3.0-pro`) in the panel; uses the global API key from Settings
   - **Chat-style UI**: User messages in blue bubbles (right-aligned), AI responses as plain text
   - **Markdown Rendering**: AI responses render with proper formatting:
-    - **Code blocks** with syntax highlighting, language label, and copy button
-    - **Tables** rendered as grids with header styling
+    - **Code blocks** with language label, copy button, and horizontal scrolling (trackpad/touch gestures supported)
+    - **Tables** rendered as scrollable grids with header styling and a copy button (copies TSV)
     - **Headers** (H1-H4) with appropriate font sizes
     - **Lists** (bulleted and numbered)
     - **Bold and italic** text formatting
@@ -136,7 +136,7 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
   - Per-tab conversation memory; scrollable log and fixed-height input
   - Uses current page text AND visual content (screenshots) as context when answering
   - Can analyze images, maps, charts, and other visual elements on the page
-  - **Resizable panel**: Drag the left edge of the panel to resize (280px-600px range)
+  - **Resizable panel**: Drag the left edge of the panel to resize (280px-700px range, default ~400px)
   - **Clear Chat button**: Located in top-right corner of panel header
 - **AI Tools Menu** (🛠 button in toolbar, next to AI button):
   - **Quick Actions** (one-click AI features, configurable in Settings):

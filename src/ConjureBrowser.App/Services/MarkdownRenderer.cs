@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using Markdig;
 using Markdig.Syntax;
@@ -43,6 +44,51 @@ public static class MarkdownRenderer
         if (string.IsNullOrWhiteSpace(content)) return false;
         // Check for common LaTeX patterns: subscripts, superscripts, braces, or LaTeX commands
         return MathPattern.IsMatch(content);
+    }
+
+    /// <summary>
+    /// Enables smooth nested scrolling for inner ScrollViewers (code blocks, tables, formulas).
+    /// Vertical wheel gestures fall through to the parent conversation scroller,
+    /// while Shift+wheel scrolls horizontally within the inner viewer.
+    /// </summary>
+    private static void EnableNestedScroll(ScrollViewer scrollViewer)
+    {
+        scrollViewer.PanningMode = PanningMode.Both;
+        scrollViewer.IsManipulationEnabled = true;
+
+        scrollViewer.PreviewMouseWheel += (_, e) =>
+        {
+            // Horizontal scroll with Shift (common for trackpads/mice)
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && scrollViewer.ScrollableWidth > 0)
+            {
+                scrollViewer.ScrollToHorizontalOffset(scrollViewer.HorizontalOffset - e.Delta);
+                e.Handled = true;
+                return;
+            }
+
+            // If this viewer can't scroll vertically, let the parent handle vertical wheel.
+            if (scrollViewer.ScrollableHeight <= 0 ||
+                scrollViewer.VerticalScrollBarVisibility == ScrollBarVisibility.Disabled)
+            {
+                e.Handled = true;
+
+                var parent = VisualTreeHelper.GetParent(scrollViewer) as UIElement;
+                while (parent != null && parent is not ScrollViewer)
+                {
+                    parent = VisualTreeHelper.GetParent(parent) as UIElement;
+                }
+
+                if (parent != null)
+                {
+                    var args = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+                    {
+                        RoutedEvent = UIElement.MouseWheelEvent,
+                        Source = scrollViewer
+                    };
+                    parent.RaiseEvent(args);
+                }
+            }
+        };
     }
 
     /// <summary>
@@ -182,9 +228,9 @@ public static class MarkdownRenderer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Padding = new Thickness(12, 8, 12, 12),
-            PanningMode = PanningMode.Both // Enable touch/trackpad scrolling
+            Padding = new Thickness(12, 8, 12, 12)
         };
+        EnableNestedScroll(scrollViewer);
 
         // Code content - NO text wrapping, allow horizontal scroll
         var codeText = new TextBlock
@@ -257,6 +303,7 @@ public static class MarkdownRenderer
                     VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
                     Content = formulaControl
                 };
+                EnableNestedScroll(scrollViewer);
 
                 return new Border
                 {
@@ -391,6 +438,7 @@ public static class MarkdownRenderer
                             MaxWidth = 350,
                             VerticalAlignment = VerticalAlignment.Center
                         };
+                        EnableNestedScroll(scrollViewer);
                         
                         inlines.Add(new InlineUIContainer(scrollViewer));
                     }
@@ -669,9 +717,9 @@ public static class MarkdownRenderer
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
         VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
         Margin = new Thickness(8, 6, 8, 8),
-        Content = grid,
-        PanningMode = PanningMode.Both // Enable touch/trackpad scrolling
+        Content = grid
     };
+    EnableNestedScroll(scrollViewer);
 
     outerStack.Children.Add(scrollViewer);
     container.Child = outerStack;

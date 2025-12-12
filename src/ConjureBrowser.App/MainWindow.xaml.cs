@@ -96,8 +96,8 @@ public partial class MainWindow : Window
     private Point _resizeStartPoint;
     private double _resizeStartWidth;
     private const double AiPanelMinWidth = 280;
-    private const double AiPanelMaxWidth = 600;
-    private const double AiPanelDefaultWidth = 320;
+    private const double AiPanelMaxWidth = 700;
+    private const double AiPanelDefaultWidth = 400;
 
     private const string HomeUrl = "https://www.google.com";
 

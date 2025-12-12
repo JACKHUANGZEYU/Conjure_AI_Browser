@@ -282,7 +282,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition x:Name="AiResizeColumn" Width="0" />
-                <ColumnDefinition x:Name="AiColumn" Width="0" MinWidth="0" MaxWidth="600" />
+                <ColumnDefinition x:Name="AiColumn" Width="0" MinWidth="0" MaxWidth="700" />
             </Grid.ColumnDefinitions>
 
             <!-- Browser tabs + content -->

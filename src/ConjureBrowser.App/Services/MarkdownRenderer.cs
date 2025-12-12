@@ -30,6 +30,21 @@ public static class MarkdownRenderer
     private static readonly SolidColorBrush HeaderColor = new(Color.FromRgb(0xFF, 0xFF, 0xFF));
     private static readonly SolidColorBrush MathColor = new(Color.FromRgb(0xFF, 0xD7, 0x00)); // Gold for math
 
+    // Pattern to detect LaTeX-like math content in code blocks
+    private static readonly Regex MathPattern = new Regex(
+        @"[_^{}]|\\(frac|sqrt|sum|int|prod|lim|infty|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|omega|cdot|times|div|pm|approx|neq|leq|geq|ldots|vdots|ddots|begin|end|vec|hat|bar|dot|partial)",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// Checks if text content looks like a math formula based on LaTeX patterns.
+    /// </summary>
+    private static bool LooksLikeMath(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return false;
+        // Check for common LaTeX patterns: subscripts, superscripts, braces, or LaTeX commands
+        return MathPattern.IsMatch(content);
+    }
+
     /// <summary>
     /// Renders markdown text to a list of WPF UIElements.
     /// </summary>
@@ -162,12 +177,13 @@ public static class MarkdownRenderer
         header.Children.Add(copyButton);
         outerStack.Children.Add(header);
 
-        // Horizontal scroll for code content
+        // Horizontal scroll for code content with touch support
         var scrollViewer = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Padding = new Thickness(12, 8, 12, 12)
+            Padding = new Thickness(12, 8, 12, 12),
+            PanningMode = PanningMode.Both // Enable touch/trackpad scrolling
         };
 
         // Code content - NO text wrapping, allow horizontal scroll
@@ -314,13 +330,44 @@ public static class MarkdownRenderer
                     break;
 
                 case CodeInline code:
-                    var codeRun = new Run(code.Content)
+                    // Check if content looks like a math formula (contains LaTeX patterns)
+                    var codeContent = code.Content;
+                    if (LooksLikeMath(codeContent))
                     {
-                        FontFamily = new FontFamily("Consolas"),
-                        Background = InlineCodeBg,
-                        Foreground = AccentColor
-                    };
-                    inlines.Add(codeRun);
+                        // Try to render as math formula
+                        try
+                        {
+                            var formulaControl = new WpfMath.Controls.FormulaControl
+                            {
+                                Formula = codeContent,
+                                Scale = 14,
+                                Foreground = MathColor
+                            };
+                            inlines.Add(new InlineUIContainer(formulaControl));
+                        }
+                        catch
+                        {
+                            // Fallback to styled math text if WpfMath parsing fails
+                            var mathRun = new Run(codeContent)
+                            {
+                                FontFamily = new FontFamily("Cambria Math, Times New Roman"),
+                                FontStyle = FontStyles.Italic,
+                                Foreground = MathColor
+                            };
+                            inlines.Add(mathRun);
+                        }
+                    }
+                    else
+                    {
+                        // Regular code - render with blue accent
+                        var codeRun = new Run(codeContent)
+                        {
+                            FontFamily = new FontFamily("Consolas"),
+                            Background = InlineCodeBg,
+                            Foreground = AccentColor
+                        };
+                        inlines.Add(codeRun);
+                    }
                     break;
 
                 case MathInline math:
@@ -450,82 +497,187 @@ public static class MarkdownRenderer
     }
 
     private static UIElement RenderTable(Markdig.Extensions.Tables.Table table)
+{
+    var grid = new Grid();
+
+    // Build table text for copy functionality (tab-separated values)
+    var tableText = new System.Text.StringBuilder();
+    var firstRow = true;
+
+    // Count columns
+    var columnCount = 0;
+    foreach (var row in table)
     {
-        var grid = new Grid();
-
-        // Count columns
-        var columnCount = 0;
-        foreach (var row in table)
+        if (row is Markdig.Extensions.Tables.TableRow tableRow)
         {
-            if (row is Markdig.Extensions.Tables.TableRow tableRow)
-            {
-                columnCount = Math.Max(columnCount, tableRow.Count);
-            }
+            columnCount = Math.Max(columnCount, tableRow.Count);
         }
-
-        for (int i = 0; i < columnCount; i++)
-        {
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        }
-
-        var rowIndex = 0;
-        foreach (var row in table)
-        {
-            if (row is Markdig.Extensions.Tables.TableRow tableRow)
-            {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-                var colIndex = 0;
-                foreach (var cell in tableRow)
-                {
-                    if (cell is Markdig.Extensions.Tables.TableCell tableCell)
-                    {
-                        var cellText = "";
-                        foreach (var block in tableCell)
-                        {
-                            if (block is ParagraphBlock para)
-                                cellText = GetInlineText(para.Inline);
-                        }
-
-                        var cellBorder = new Border
-                        {
-                            BorderBrush = CodeBorder,
-                            BorderThickness = new Thickness(1),
-                            Padding = new Thickness(10, 6, 10, 6),
-                            Background = rowIndex == 0 ? CodeBackground : Brushes.Transparent
-                        };
-
-                        var cellContent = new TextBlock
-                        {
-                            Text = cellText,
-                            FontSize = 12,
-                            Foreground = TextColor,
-                            FontWeight = rowIndex == 0 ? FontWeights.Bold : FontWeights.Normal,
-                            TextWrapping = TextWrapping.NoWrap  // No wrap in table cells
-                        };
-
-                        cellBorder.Child = cellContent;
-                        Grid.SetRow(cellBorder, rowIndex);
-                        Grid.SetColumn(cellBorder, colIndex);
-                        grid.Children.Add(cellBorder);
-                    }
-                    colIndex++;
-                }
-                rowIndex++;
-            }
-        }
-
-        // Wrap in horizontal ScrollViewer for wide tables
-        var scrollViewer = new ScrollViewer
-        {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Margin = new Thickness(0, 8, 0, 8),
-            Content = grid
-        };
-
-        return scrollViewer;
     }
+
+    for (int i = 0; i < columnCount; i++)
+    {
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+    }
+
+    var rowIndex = 0;
+    foreach (var row in table)
+    {
+        if (row is Markdig.Extensions.Tables.TableRow tableRow)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var rowTexts = new List<string>();
+            var colIndex = 0;
+            foreach (var cell in tableRow)
+            {
+                if (cell is Markdig.Extensions.Tables.TableCell tableCell)
+                {
+                    // Get cell text for copy
+                    var cellTextValue = "";
+                    foreach (var block in tableCell)
+                    {
+                        if (block is ParagraphBlock para && para.Inline != null)
+                        {
+                            cellTextValue = GetInlineText(para.Inline);
+                        }
+                    }
+                    rowTexts.Add(cellTextValue);
+
+                    var cellBorder = new Border
+                    {
+                        BorderBrush = CodeBorder,
+                        BorderThickness = new Thickness(1),
+                        Padding = new Thickness(10, 6, 10, 6),
+                        Background = rowIndex == 0 ? CodeBackground : Brushes.Transparent
+                    };
+
+                    // Use TextBlock with RenderInlines to support LaTeX formulas
+                    var cellContent = new TextBlock
+                    {
+                        FontSize = 12,
+                        Foreground = TextColor,
+                        FontWeight = rowIndex == 0 ? FontWeights.Bold : FontWeights.Normal,
+                        TextWrapping = TextWrapping.NoWrap
+                    };
+
+                    // Render cell content with inline support (including MathInline)
+                    foreach (var block in tableCell)
+                    {
+                        if (block is ParagraphBlock para && para.Inline != null)
+                        {
+                            RenderInlines(cellContent.Inlines, para.Inline);
+                        }
+                    }
+
+                    cellBorder.Child = cellContent;
+                    Grid.SetRow(cellBorder, rowIndex);
+                    Grid.SetColumn(cellBorder, colIndex);
+                    grid.Children.Add(cellBorder);
+                }
+                colIndex++;
+            }
+
+            // Add row to table text
+            if (!firstRow) tableText.AppendLine();
+            tableText.Append(string.Join("\t", rowTexts));
+            firstRow = false;
+
+            rowIndex++;
+        }
+    }
+
+    // Create container with header (like code blocks)
+    var container = new Border
+    {
+        Background = Brushes.Transparent,
+        BorderBrush = CodeBorder,
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(4),
+        Margin = new Thickness(0, 8, 0, 8)
+    };
+
+    var outerStack = new StackPanel();
+
+    // Header with "Table" label and copy button
+    var header = new Grid
+    {
+        Margin = new Thickness(12, 6, 12, 0),
+        Background = Brushes.Transparent
+    };
+    header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+    header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+    var tableLabel = new TextBlock
+    {
+        Text = "table",
+        FontSize = 11,
+        Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6)),
+        VerticalAlignment = VerticalAlignment.Center
+    };
+    Grid.SetColumn(tableLabel, 0);
+    header.Children.Add(tableLabel);
+
+    // Copy button with safe clipboard access
+    var tableToCopy = tableText.ToString();
+    var copyButton = new Button
+    {
+        Content = "📋 Copy",
+        FontSize = 11,
+        Background = Brushes.Transparent,
+        Foreground = AccentColor,
+        BorderThickness = new Thickness(0),
+        Padding = new Thickness(8, 4, 8, 4),
+        Cursor = System.Windows.Input.Cursors.Hand
+    };
+
+    copyButton.Click += (sender, args) =>
+    {
+        try
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                Clipboard.SetDataObject(tableToCopy, true);
+            });
+
+            if (sender is Button btn)
+            {
+                btn.Content = "✓ Copied!";
+                var timer = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(1.5)
+                };
+                timer.Tick += (_, _) =>
+                {
+                    btn.Content = "📋 Copy";
+                    timer.Stop();
+                };
+                timer.Start();
+            }
+        }
+        catch
+        {
+            // Silently fail if clipboard is unavailable
+        }
+    };
+    Grid.SetColumn(copyButton, 1);
+    header.Children.Add(copyButton);
+    outerStack.Children.Add(header);
+
+    // Wrap table in horizontal ScrollViewer with touch support
+    var scrollViewer = new ScrollViewer
+    {
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        Margin = new Thickness(8, 6, 8, 8),
+        Content = grid,
+        PanningMode = PanningMode.Both // Enable touch/trackpad scrolling
+    };
+
+    outerStack.Children.Add(scrollViewer);
+    container.Child = outerStack;
+
+    return container;
+}
 
     private static UIElement RenderQuote(QuoteBlock quote)
     {

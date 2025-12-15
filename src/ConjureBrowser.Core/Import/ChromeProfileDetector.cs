@@ -69,12 +69,14 @@ public static class ChromeProfileDetector
     {
         var bookmarksPath = Path.Combine(path, "Bookmarks");
         var historyPath = Path.Combine(path, "History");
+        var loginDataPath = Path.Combine(path, "Login Data");
 
         var hasBookmarks = File.Exists(bookmarksPath);
         var hasHistory = File.Exists(historyPath);
+        var hasPasswords = File.Exists(loginDataPath);
 
         // Only include profiles that have something to import
-        if (!hasBookmarks && !hasHistory)
+        if (!hasBookmarks && !hasHistory && !hasPasswords)
             return null;
 
         string? customName = null;
@@ -104,6 +106,7 @@ public static class ChromeProfileDetector
             Path = path,
             HasBookmarks = hasBookmarks,
             HasHistory = hasHistory,
+            HasPasswords = hasPasswords,
             CustomName = customName
         };
     }

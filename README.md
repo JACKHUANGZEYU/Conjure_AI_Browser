@@ -180,10 +180,11 @@ Windows desktop browser built with WPF, CefSharp (Chromium), and a built-in Gemi
       - **Letter dropdown**: Choose A-Z (reserved letters like C, V, X, etc. are disabled for Ctrl-only)
     - Shortcuts are conflict-free by design — reserved system shortcuts cannot be selected
   - **Import from Chrome**:
-    - Import bookmarks and browsing history from Google Chrome
+    - Import bookmarks, browsing history, and saved passwords (autofill logins) from Google Chrome
     - Auto-detects Chrome profiles (Default, Profile 1, etc.)
     - Merges imported data with existing Conjure data (duplicates skipped)
     - Supports custom Chrome profile names
+    - Passkeys/WebAuthn credentials are not importable automatically yet (stored in Windows/TPM)
 
 ## Keyboard Shortcuts
 
@@ -316,25 +317,30 @@ Custom shortcuts for AI tools can be configured in Settings. Example shortcuts:
 - Timestamps display in local time (HH:mm) even though they are stored in UTC.
 
 ## Chrome Import
-- What changed: Added ability to import bookmarks and browsing history from Google Chrome.
-- How to use: Open Settings (via ⋮ menu → Settings) → scroll down to "Import Data" section → click "Import from Chrome...". Select your Chrome profile from the dropdown. Check which data types to import (Bookmarks, History). Click Import.
-- Supported data: Bookmarks (from Chrome's JSON file), Browsing History (from Chrome's SQLite database).
-- Behavior: Imported data is **merged** with existing Conjure data. Duplicate bookmarks (same URL) are skipped. History entries with duplicate URLs are also skipped.
+- What changed: Added ability to import bookmarks, browsing history, and saved passwords from Google Chrome.
+- How to use: Open Settings (via ⋮ menu → Settings) → scroll down to "Import Data" section → click "Import from Chrome...". Select your Chrome profile from the dropdown. Check which data types to import (Bookmarks, History, Passwords). Click Import.
+- Supported data: Bookmarks (from Chrome's JSON file), Browsing History (from Chrome's SQLite database), Saved Passwords (decrypted from Chrome and stored in Conjure's JSON-based credential store).
+- **Autofill UI**: When you click/focus a username, email, or password field on a matching site, Conjure shows a Chrome-style dropdown of saved usernames. Clicking a username fills both username and password fields automatically.
+- Password storage: Imported passwords are stored in `%LocalAppData%\ConjureBrowser\imported_passwords.json`. Passwords saved directly in CEF are stored in `cef-cache\Default\Login Data`.
+- Behavior: Imported data is **merged** with existing Conjure data. Duplicate bookmarks (same URL) are skipped. History entries with duplicate URLs are also skipped. Password entries that already exist for the same origin+username are skipped.
 - Profile detection: Automatically finds Chrome at `%LOCALAPPDATA%\Google\Chrome\User Data\`. Detects all profiles (Default, Profile 1, etc.) and reads custom profile names from Chrome preferences.
 
 **Manual test checklist (Chrome Import)**
 1) Open Settings → scroll to "Import Data" → click "Import from Chrome..." → dialog opens with detected profiles.
-2) Select a profile → see available data checkboxes (Bookmarks ✓, History ✓).
+2) Select a profile → see available data checkboxes (Bookmarks ✓, History ✓, Passwords ✓).
 3) Import bookmarks → they appear in the Conjure bookmarks bar immediately.
 4) Import history → entries appear in Conjure's History tab (Ctrl+H).
-5) Re-import → duplicates are skipped; import count shows "X imported, Y skipped".
-6) If Chrome not installed → dialog shows "Chrome Not Found" message.
+5) Import passwords → then focus a login field on a matching site → dropdown shows saved usernames and clicking fills both fields.
+6) Re-import → duplicates are skipped; import count shows "X imported, Y skipped".
+7) If Chrome not installed → dialog shows "Chrome Not Found" message.
 
 **Known limitations**
 - Chrome extensions cannot be imported (not supported by CEF/CefSharp).
-- Saved passwords cannot be imported (encrypted by Chrome).
+- Saved password import is Windows‑only (uses DPAPI to decrypt Chrome's master key).
+- Passkeys/WebAuthn credentials cannot be imported automatically yet because private keys are stored in Windows Hello/TPM; you'll need to re‑register passkeys per site.
 - Chrome must not be running when importing history (database is locked); the importer copies the database to a temp file to work around this.
 - Only imports `http://` and `https://` URLs.
+
 
 
 ## Running

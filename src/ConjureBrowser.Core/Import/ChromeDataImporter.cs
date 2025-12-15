@@ -1,5 +1,6 @@
 using ConjureBrowser.Core.Models;
 using ConjureBrowser.Core.Services;
+using Microsoft.Data.Sqlite;
 
 namespace ConjureBrowser.Core.Import;
 
@@ -29,6 +30,16 @@ public sealed class ImportResult
     public int HistorySkipped { get; init; }
 
     /// <summary>
+    /// Number of saved passwords successfully imported.
+    /// </summary>
+    public int PasswordsImported { get; init; }
+
+    /// <summary>
+    /// Number of saved passwords skipped (duplicates/unreadable).
+    /// </summary>
+    public int PasswordsSkipped { get; init; }
+
+    /// <summary>
     /// Any error message if the import failed.
     /// </summary>
     public string? ErrorMessage { get; init; }
@@ -44,6 +55,8 @@ public sealed class ImportResult
 /// </summary>
 public sealed class ChromeDataImporter
 {
+    private static readonly DateTime WebKitEpoch = new(1601, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
     /// <summary>
     /// Imports bookmarks from a Chrome profile into the bookmark store.
     /// </summary>
@@ -114,6 +127,32 @@ public sealed class ChromeDataImporter
     }
 
     /// <summary>
+    /// Imports saved passwords from Chrome into Conjure's imported credentials store.
+    /// Uses a JSON file-based store to avoid conflicts with CEF's locked Login Data.
+    /// </summary>
+    public async Task<(int imported, int skipped)> ImportPasswordsAsync(
+        ChromeProfile profile,
+        string? conjureUserDataPath = null)
+    {
+        if (!profile.HasPasswords)
+            return (0, 0);
+
+        // Read decrypted logins from Chrome.
+        var chromeLogins = await ChromePasswordReader.ReadPasswordsAsync(profile).ConfigureAwait(false);
+        if (chromeLogins.Count == 0)
+            return (0, 0);
+
+        // Use Conjure's data path for the imported credentials store
+        var dataPath = conjureUserDataPath ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ConjureBrowser");
+
+        var store = new ImportedCredentialStore(dataPath);
+        return await store.AddLoginsAsync(chromeLogins).ConfigureAwait(false);
+    }
+
+
+    /// <summary>
     /// Imports all selected data types from a Chrome profile.
     /// </summary>
     /// <param name="profile">The Chrome profile to import from.</param>
@@ -125,32 +164,52 @@ public sealed class ChromeDataImporter
         ChromeProfile profile,
         BookmarkStore? bookmarkStore,
         HistoryStore? historyStore,
+        bool importPasswords = false,
         IProgress<double>? progress = null)
     {
         try
         {
-            var result = new ImportResult();
             var bookmarksImported = 0;
             var bookmarksSkipped = 0;
             var historyImported = 0;
             var historySkipped = 0;
+            var passwordsImported = 0;
+            var passwordsSkipped = 0;
 
-            progress?.Report(0.0);
+            var stages = new List<Func<Task>>();
 
-            // Import bookmarks
             if (bookmarkStore != null && profile.HasBookmarks)
             {
-                progress?.Report(0.1);
-                (bookmarksImported, bookmarksSkipped) = await ImportBookmarksAsync(profile, bookmarkStore).ConfigureAwait(false);
-                progress?.Report(0.5);
+                stages.Add(async () =>
+                {
+                    (bookmarksImported, bookmarksSkipped) = await ImportBookmarksAsync(profile, bookmarkStore).ConfigureAwait(false);
+                });
             }
 
-            // Import history
             if (historyStore != null && profile.HasHistory)
             {
-                progress?.Report(0.5);
-                (historyImported, historySkipped) = await ImportHistoryAsync(profile, historyStore).ConfigureAwait(false);
-                progress?.Report(1.0);
+                stages.Add(async () =>
+                {
+                    (historyImported, historySkipped) = await ImportHistoryAsync(profile, historyStore).ConfigureAwait(false);
+                });
+            }
+
+            if (importPasswords && profile.HasPasswords)
+            {
+                stages.Add(async () =>
+                {
+                    (passwordsImported, passwordsSkipped) = await ImportPasswordsAsync(profile).ConfigureAwait(false);
+                });
+            }
+
+            if (stages.Count == 0)
+                return new ImportResult();
+
+            for (var i = 0; i < stages.Count; i++)
+            {
+                progress?.Report((double)i / stages.Count);
+                await stages[i]().ConfigureAwait(false);
+                progress?.Report((double)(i + 1) / stages.Count);
             }
 
             return new ImportResult
@@ -158,7 +217,9 @@ public sealed class ChromeDataImporter
                 BookmarksImported = bookmarksImported,
                 BookmarksSkipped = bookmarksSkipped,
                 HistoryImported = historyImported,
-                HistorySkipped = historySkipped
+                HistorySkipped = historySkipped,
+                PasswordsImported = passwordsImported,
+                PasswordsSkipped = passwordsSkipped
             };
         }
         catch (Exception ex)
@@ -168,5 +229,12 @@ public sealed class ChromeDataImporter
                 ErrorMessage = ex.Message
             };
         }
+    }
+
+    private static long ToWebKitTimestamp(DateTimeOffset time)
+    {
+        var utc = time.ToUniversalTime().UtcDateTime;
+        var delta = utc - WebKitEpoch;
+        return (long)(delta.TotalMilliseconds * 1000);
     }
 }

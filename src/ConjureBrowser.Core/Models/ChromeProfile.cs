@@ -26,6 +26,11 @@ public sealed class ChromeProfile
     public bool HasHistory { get; init; }
 
     /// <summary>
+    /// Whether a saved passwords database exists in this profile.
+    /// </summary>
+    public bool HasPasswords { get; init; }
+
+    /// <summary>
     /// Custom display name from Chrome preferences (if available).
     /// </summary>
     public string? CustomName { get; init; }

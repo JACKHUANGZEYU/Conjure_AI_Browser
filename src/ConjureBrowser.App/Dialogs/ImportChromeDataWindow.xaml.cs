@@ -37,6 +37,7 @@ public partial class ImportChromeDataWindow : Window
             ProfileComboBox.Visibility = Visibility.Collapsed;
             ImportBookmarksCheckBox.IsEnabled = false;
             ImportHistoryCheckBox.IsEnabled = false;
+            ImportPasswordsCheckBox.IsEnabled = false;
             ImportButton.IsEnabled = false;
             ChromePathText.Text = ChromeProfileDetector.ChromeUserDataPath;
             return;
@@ -70,6 +71,11 @@ public partial class ImportChromeDataWindow : Window
         else
             info.Add("✗ No history found");
 
+        if (profile.HasPasswords)
+            info.Add("вњ?Saved passwords available");
+        else
+            info.Add("вњ?No saved passwords found");
+
         ProfileInfoText.Text = string.Join("\n", info);
 
         // Update checkbox enabled state
@@ -77,6 +83,8 @@ public partial class ImportChromeDataWindow : Window
         ImportBookmarksCheckBox.IsChecked = profile.HasBookmarks;
         ImportHistoryCheckBox.IsEnabled = profile.HasHistory;
         ImportHistoryCheckBox.IsChecked = profile.HasHistory;
+        ImportPasswordsCheckBox.IsEnabled = profile.HasPasswords;
+        ImportPasswordsCheckBox.IsChecked = profile.HasPasswords;
     }
 
     private async void ImportButton_Click(object sender, RoutedEventArgs e)
@@ -86,8 +94,9 @@ public partial class ImportChromeDataWindow : Window
 
         var importBookmarks = ImportBookmarksCheckBox.IsChecked == true && profile.HasBookmarks;
         var importHistory = ImportHistoryCheckBox.IsChecked == true && profile.HasHistory;
+        var importPasswords = ImportPasswordsCheckBox.IsChecked == true && profile.HasPasswords;
 
-        if (!importBookmarks && !importHistory)
+        if (!importBookmarks && !importHistory && !importPasswords)
         {
             MessageBox.Show("Please select at least one type of data to import.", 
                 "Nothing Selected", 
@@ -101,18 +110,33 @@ public partial class ImportChromeDataWindow : Window
         ProfileComboBox.IsEnabled = false;
         ImportBookmarksCheckBox.IsEnabled = false;
         ImportHistoryCheckBox.IsEnabled = false;
+        ImportPasswordsCheckBox.IsEnabled = false;
         CloseButton.Content = "Cancel";
 
         // Show progress
         ProgressPanel.Visibility = Visibility.Visible;
         ResultsPanel.Visibility = Visibility.Collapsed;
 
+        var stages = new List<string>();
+        if (importBookmarks) stages.Add("bookmarks");
+        if (importHistory) stages.Add("history");
+        if (importPasswords) stages.Add("passwords");
+
         var progress = new Progress<double>(value =>
         {
             ProgressBar.Value = value * 100;
-            ProgressText.Text = value < 0.5 
-                ? "Importing bookmarks..." 
-                : "Importing history...";
+            if (stages.Count == 0) return;
+
+            var idx = (int)Math.Floor(value * stages.Count);
+            if (idx >= stages.Count) idx = stages.Count - 1;
+
+            ProgressText.Text = stages[idx] switch
+            {
+                "bookmarks" => "Importing bookmarks...",
+                "history" => "Importing history...",
+                "passwords" => "Importing saved passwords...",
+                _ => "Importing..."
+            };
         });
 
         try
@@ -121,6 +145,7 @@ public partial class ImportChromeDataWindow : Window
                 profile,
                 importBookmarks ? _bookmarkStore : null,
                 importHistory ? _historyStore : null,
+                importPasswords,
                 progress);
 
             // Show results
@@ -139,6 +164,11 @@ public partial class ImportChromeDataWindow : Window
                 if (importHistory)
                 {
                     resultLines.Add($"✓ History: {result.HistoryImported} imported, {result.HistorySkipped} skipped");
+                }
+
+                if (importPasswords)
+                {
+                    resultLines.Add($"вњ?Passwords: {result.PasswordsImported} imported, {result.PasswordsSkipped} skipped");
                 }
 
                 ResultsText.Text = string.Join("\n", resultLines);

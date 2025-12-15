@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private readonly HistoryStore _history = new();
     private readonly HttpClient _httpClient = new();
     private readonly GeminiAiAssistant _ai;
+    private readonly CredentialStore _credentials = new();
 
     private readonly List<BrowserTab> _tabs = new();
     private BrowserTab? _activeTab;
@@ -100,6 +101,167 @@ public partial class MainWindow : Window
     private const double AiPanelDefaultWidth = 400;
 
     private const string HomeUrl = "https://www.google.com";
+
+    // Injected into each page to request + display Conjure saved-login suggestions.
+    private const string AutofillScript = """
+        (() => {
+          if (window.__conjureAutofillInstalled) return;
+          window.__conjureAutofillInstalled = true;
+          console.log('[Conjure] Autofill script installed on:', location.href);
+
+          let menuEl = null;
+          let lastFocusedInput = null;
+
+          function removeMenu() {
+            if (menuEl) {
+              try { menuEl.remove(); } catch {}
+              menuEl = null;
+            }
+          }
+
+          function isCandidate(el) {
+            if (!el || el.tagName !== "INPUT") return false;
+            const t = (el.type || "text").toLowerCase();
+            const ac = (el.autocomplete || "").toLowerCase();
+            const name = (el.name || "").toLowerCase();
+            const id = (el.id || "").toLowerCase();
+            
+            // Check type
+            if (["text","email","tel","password"].includes(t)) return true;
+            // Check autocomplete
+            if (ac.includes("username") || ac.includes("email") || ac.includes("password")) return true;
+            // Check name/id for common login field patterns
+            if (name.includes("user") || name.includes("email") || name.includes("login")) return true;
+            if (id.includes("user") || id.includes("email") || id.includes("login")) return true;
+            
+            return false;
+          }
+
+          function postFocus() {
+            try {
+              if (typeof CefSharp !== "undefined" && CefSharp.PostMessage) {
+                console.log('[Conjure] Posting autofillFocus for:', location.href);
+                CefSharp.PostMessage({ kind: "autofillFocus", url: location.href });
+              } else {
+                console.log('[Conjure] CefSharp.PostMessage not available');
+              }
+            } catch (e) {
+              console.error('[Conjure] Error posting focus:', e);
+            }
+          }
+
+          document.addEventListener("focusin", (e) => {
+            const el = e.target;
+            if (!isCandidate(el)) return;
+            console.log('[Conjure] Login field focused:', el.name || el.id || el.type);
+            lastFocusedInput = el;
+            postFocus();
+          }, true);
+
+          document.addEventListener("click", (e) => {
+            if (menuEl && e.target && !menuEl.contains(e.target)) removeMenu();
+          }, true);
+
+          window.__conjureShowCredentialSuggestions = function(creds) {
+            console.log('[Conjure] Showing credential suggestions:', creds ? creds.length : 0);
+            removeMenu();
+            if (!creds || !creds.length) {
+              console.log('[Conjure] No credentials to show');
+              return;
+            }
+            
+            // Use the last focused input if activeElement isn't a candidate
+            let el = document.activeElement;
+            if (!isCandidate(el) && lastFocusedInput && document.contains(lastFocusedInput)) {
+              el = lastFocusedInput;
+            }
+            
+            if (!isCandidate(el)) {
+              console.log('[Conjure] No valid input field focused');
+              return;
+            }
+
+            const rect = el.getBoundingClientRect();
+            const scrollX = window.scrollX || window.pageXOffset;
+            const scrollY = window.scrollY || window.pageYOffset;
+
+            menuEl = document.createElement("div");
+            menuEl.id = "__conjure_autofill_menu";
+            menuEl.style.cssText = `
+              position: absolute !important;
+              left: ${rect.left + scrollX}px !important;
+              top: ${rect.bottom + scrollY + 2}px !important;
+              min-width: ${Math.max(220, rect.width)}px !important;
+              max-width: 420px !important;
+              background: #202124 !important;
+              border: 1px solid #3c4043 !important;
+              border-radius: 6px !important;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+              z-index: 2147483647 !important;
+              font-family: system-ui, Segoe UI, Arial !important;
+              font-size: 13px !important;
+              color: #e8eaed !important;
+              padding: 4px 0 !important;
+              box-sizing: border-box !important;
+            `;
+
+            creds.forEach((c) => {
+              const item = document.createElement("div");
+              const label = (c.username && c.username.trim()) ? c.username : "(no username)";
+              item.textContent = label;
+              item.style.cssText = `
+                padding: 8px 12px !important;
+                cursor: pointer !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                background: transparent !important;
+              `;
+              item.addEventListener("mouseenter", () => item.style.background = "#303134");
+              item.addEventListener("mouseleave", () => item.style.background = "transparent");
+              item.addEventListener("mousedown", (ev) => { 
+                ev.preventDefault(); 
+                ev.stopPropagation(); 
+              });
+              item.addEventListener("click", () => {
+                console.log('[Conjure] Filling credential for:', c.username);
+                try {
+                  // Set username
+                  el.focus();
+                  el.value = c.username || "";
+                  el.dispatchEvent(new Event("input", { bubbles: true }));
+                  el.dispatchEvent(new Event("change", { bubbles: true }));
+
+                  // Find and fill password
+                  let pw = null;
+                  const form = el.form || el.closest("form");
+                  if (form) pw = form.querySelector("input[type='password']");
+                  if (!pw) pw = document.querySelector("input[type='password']");
+                  if (pw) {
+                    pw.focus();
+                    pw.value = c.password || "";
+                    pw.dispatchEvent(new Event("input", { bubbles: true }));
+                    pw.dispatchEvent(new Event("change", { bubbles: true }));
+                    console.log('[Conjure] Password field filled');
+                  } else {
+                    console.log('[Conjure] No password field found');
+                  }
+                } catch (e) {
+                  console.error('[Conjure] Error filling fields:', e);
+                }
+                removeMenu();
+              });
+              menuEl.appendChild(item);
+            });
+
+            document.body.appendChild(menuEl);
+            console.log('[Conjure] Menu displayed with', creds.length, 'items');
+          };
+
+          window.addEventListener("scroll", removeMenu, true);
+          window.addEventListener("resize", removeMenu, true);
+        })();
+        """;
 
     public MainWindow()
     {
@@ -248,6 +410,7 @@ public partial class MainWindow : Window
         tab.Browser.AddressChanged += Browser_AddressChanged;
         tab.Browser.LoadingStateChanged += Browser_LoadingStateChanged;
         tab.Browser.FrameLoadEnd += Browser_FrameLoadEnd;
+        tab.Browser.JavascriptMessageReceived += Browser_JavascriptMessageReceived;
     }
 
     private BrowserTab? FindTabByBrowser(object? browser)
@@ -335,43 +498,122 @@ public partial class MainWindow : Window
     {
         try
         {
-            // Only track main frame navigations
-            if (!e.Frame.IsMain) return;
+            var isMainFrame = e.Frame.IsMain;
 
             // FrameLoadEnd fires on a background thread - we need to access browser properties on UI thread
             string? url = null;
             string? title = null;
 
-            await Dispatcher.InvokeAsync(() =>
+            if (isMainFrame)
             {
-                var tab = FindTabByBrowser(sender);
-                if (tab is null) return;
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    var tab = FindTabByBrowser(sender);
+                    if (tab is null) return;
 
-                url = tab.Browser.Address;
-                title = tab.Browser.Title;
-            });
+                    url = tab.Browser.Address;
+                    title = tab.Browser.Title;
+                });
 
-            // Filter out special URLs that shouldn't be recorded
-            if (string.IsNullOrWhiteSpace(url) ||
-                url == "about:blank" ||
-                url.StartsWith("chrome-devtools://", StringComparison.OrdinalIgnoreCase))
-                return;
+                // Filter out special URLs that shouldn't be recorded
+                if (!string.IsNullOrWhiteSpace(url) &&
+                    url != "about:blank" &&
+                    !url.StartsWith("chrome-devtools://", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Record to history
+                    await _history.RecordAsync(
+                        string.IsNullOrWhiteSpace(title) ? url : title,
+                        url,
+                        DateTimeOffset.UtcNow).ConfigureAwait(false);
 
-            // Record to history
-            await _history.RecordAsync(
-                string.IsNullOrWhiteSpace(title) ? url : title,
-                url,
-                DateTimeOffset.UtcNow).ConfigureAwait(false);
-
-            // If history tab is open, refresh it on the UI thread
-            if (_historyTab != null && _historyListView != null)
-            {
-                await Dispatcher.InvokeAsync(() => RefreshHistoryList());
+                    // If history tab is open, refresh it on the UI thread
+                    if (_historyTab != null && _historyListView != null)
+                    {
+                        await Dispatcher.InvokeAsync(() => RefreshHistoryList());
+                    }
+                }
             }
+
+            // Install Conjure autofill script for saved logins (main + subframes).
+            e.Frame.ExecuteJavaScriptAsync(AutofillScript);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"History record failed: {ex}");
+        }
+    }
+
+    private async void Browser_JavascriptMessageReceived(object? sender, JavascriptMessageReceivedEventArgs e)
+    {
+        if (sender is not ChromiumWebBrowser browser)
+            return;
+
+        try
+        {
+            string? kind = null;
+            string? url = null;
+
+            if (e.Message is IDictionary<string, object> dict)
+            {
+                if (dict.TryGetValue("kind", out var k))
+                    kind = k?.ToString();
+                if (dict.TryGetValue("url", out var u))
+                    url = u?.ToString();
+            }
+            else if (e.Message is string s)
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(s);
+                if (doc.RootElement.TryGetProperty("kind", out var kEl))
+                    kind = kEl.GetString();
+                if (doc.RootElement.TryGetProperty("url", out var uEl))
+                    url = uEl.GetString();
+            }
+            else
+            {
+                var raw = e.Message?.ToString();
+                if (!string.IsNullOrWhiteSpace(raw) && raw.TrimStart().StartsWith("{"))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(raw);
+                    if (doc.RootElement.TryGetProperty("kind", out var kEl))
+                        kind = kEl.GetString();
+                    if (doc.RootElement.TryGetProperty("url", out var uEl))
+                        url = uEl.GetString();
+                }
+            }
+
+            Debug.WriteLine($"[Autofill] JS message received - kind: {kind}, url: {url}");
+
+            if (!string.Equals(kind, "autofillFocus", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            url ??= browser.Address;
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                Debug.WriteLine("[Autofill] No URL available");
+                return;
+            }
+
+            Debug.WriteLine($"[Autofill] Looking up credentials for: {url}");
+            var creds = await _credentials.GetForUrlAsync(url).ConfigureAwait(false);
+            Debug.WriteLine($"[Autofill] Found {creds.Count} credentials");
+            
+            if (creds.Count == 0)
+                return;
+
+            var unique = creds
+                .GroupBy(c => c.Username ?? "", StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .Select(c => new { username = c.Username, password = c.Password })
+                .ToList();
+
+            var json = System.Text.Json.JsonSerializer.Serialize(unique);
+            Debug.WriteLine($"[Autofill] Sending {unique.Count} unique credentials to page");
+            browser.ExecuteScriptAsync($"window.__conjureShowCredentialSuggestions({json});");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Autofill] Error handling JS message: {ex.Message}");
+            // Ignore JS messaging errors
         }
     }
 
@@ -2130,7 +2372,7 @@ public partial class MainWindow : Window
 
         stack.Children.Add(new TextBlock
         {
-            Text = "Import bookmarks and browsing history from Google Chrome.",
+            Text = "Import bookmarks, browsing history, and saved passwords from Google Chrome.",
             Foreground = SystemColors.GrayTextBrush,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 12)
